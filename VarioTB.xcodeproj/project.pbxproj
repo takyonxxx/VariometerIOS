@@ -1,0 +1,375 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		08DE59D99EEC450AB4987449 /* LocationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87D48A2226F54B92B5269508 /* LocationManager.swift */; };
+		341EDE42433143F5BDBED298 /* SatelliteMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5A05CEDD58D4950ABAB5BB2 /* SatelliteMapView.swift */; };
+		3940B39A1D0744EE85BE9936 /* WindDial.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1FE22F64ACD34E6BA00C2198 /* WindDial.swift */; };
+		3BD9B62375B84DEEA42310FF /* TopBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE43D510D017469593039B37 /* TopBar.swift */; };
+		452318BA8DBC4984A88046BB /* VarioBigReadout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D5DE11B1E4E4A38B7EABC59 /* VarioBigReadout.swift */; };
+		4B2D9AABADA544F298009B59 /* WindEstimator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8DD2A853C992464DAB2D6A8C /* WindEstimator.swift */; };
+		4F46C6C3F19240A99176A0E4 /* VarioManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C19F76ABFD647778A8340CA /* VarioManager.swift */; };
+		5021DC368A924488B78B4211 /* BottomTelemetry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87ECC1D80DC5415D96025E75 /* BottomTelemetry.swift */; };
+		674EC86C245244AFA6B27E90 /* CoordConverter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 199930F8C7C54E6F8F9B8481 /* CoordConverter.swift */; };
+		68456593A5924BB081008258 /* AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0570925BD1314D3EA5CF2890 /* AppSettings.swift */; };
+		7F77EB612C6F48C38C7237EA /* AudioEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7452A3AE96041149D0594F7 /* AudioEngine.swift */; };
+		A57A19276CF24812AAA0D7F5 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B97BD02093D4C76B69E368E /* ContentView.swift */; };
+		A5F1E832842F42BF9282FB27 /* ThermalPoint.swift in Sources */ = {isa = PBXBuildFile; fileRef = C89C3399EA334BE487E34303 /* ThermalPoint.swift */; };
+		CEA3618647D442AE9CB06FC3 /* VarioTBApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A60227196C314AA08FD9832A /* VarioTBApp.swift */; };
+		E74D078FF93C434898B239C8 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = F7E7F608A8AC4AF1B9717162 /* Assets.xcassets */; };
+		FB53A880A31D4EA68A9E29E6 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 078A1F546D3A4BDE9F28BB57 /* SettingsView.swift */; };
+		FC4AE83DF7A648648EC1F4BE /* ThermalRadar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 202AE1FDABD643FD862EA766 /* ThermalRadar.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		0570925BD1314D3EA5CF2890 /* AppSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettings.swift; sourceTree = "<group>"; };
+		078A1F546D3A4BDE9F28BB57 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		199930F8C7C54E6F8F9B8481 /* CoordConverter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoordConverter.swift; sourceTree = "<group>"; };
+		1B97BD02093D4C76B69E368E /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		1FE22F64ACD34E6BA00C2198 /* WindDial.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindDial.swift; sourceTree = "<group>"; };
+		202AE1FDABD643FD862EA766 /* ThermalRadar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThermalRadar.swift; sourceTree = "<group>"; };
+		2596A10CF43F458D9DEE142B /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		4D5DE11B1E4E4A38B7EABC59 /* VarioBigReadout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VarioBigReadout.swift; sourceTree = "<group>"; };
+		6C19F76ABFD647778A8340CA /* VarioManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VarioManager.swift; sourceTree = "<group>"; };
+		87D48A2226F54B92B5269508 /* LocationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationManager.swift; sourceTree = "<group>"; };
+		87ECC1D80DC5415D96025E75 /* BottomTelemetry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BottomTelemetry.swift; sourceTree = "<group>"; };
+		8DD2A853C992464DAB2D6A8C /* WindEstimator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindEstimator.swift; sourceTree = "<group>"; };
+		A60227196C314AA08FD9832A /* VarioTBApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VarioTBApp.swift; sourceTree = "<group>"; };
+		C7452A3AE96041149D0594F7 /* AudioEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioEngine.swift; sourceTree = "<group>"; };
+		C89C3399EA334BE487E34303 /* ThermalPoint.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThermalPoint.swift; sourceTree = "<group>"; };
+		CE43D510D017469593039B37 /* TopBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TopBar.swift; sourceTree = "<group>"; };
+		E5A05CEDD58D4950ABAB5BB2 /* SatelliteMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SatelliteMapView.swift; sourceTree = "<group>"; };
+		F2A854AC28C443E38C3DED67 /* VarioTB.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = VarioTB.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		F7E7F608A8AC4AF1B9717162 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		156F0795DFE348A7A08033D1 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		0B7F1CC3A18B462088250EAD /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				F2A854AC28C443E38C3DED67 /* VarioTB.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		2B1D1595E65A4EDD95EDAB10 = {
+			isa = PBXGroup;
+			children = (
+				65D09A286118458689B58543 /* VarioTB */,
+				0B7F1CC3A18B462088250EAD /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		2D8C263AFCD1453387D5A0DB /* Managers */ = {
+			isa = PBXGroup;
+			children = (
+				87D48A2226F54B92B5269508 /* LocationManager.swift */,
+				6C19F76ABFD647778A8340CA /* VarioManager.swift */,
+				8DD2A853C992464DAB2D6A8C /* WindEstimator.swift */,
+			);
+			path = Managers;
+			sourceTree = "<group>";
+		};
+		548D5FDED5224CE691194FE9 /* Audio */ = {
+			isa = PBXGroup;
+			children = (
+				C7452A3AE96041149D0594F7 /* AudioEngine.swift */,
+			);
+			path = Audio;
+			sourceTree = "<group>";
+		};
+		65D09A286118458689B58543 /* VarioTB */ = {
+			isa = PBXGroup;
+			children = (
+				A60227196C314AA08FD9832A /* VarioTBApp.swift */,
+				F7E5062DBFD947379D8411CC /* Models */,
+				2D8C263AFCD1453387D5A0DB /* Managers */,
+				548D5FDED5224CE691194FE9 /* Audio */,
+				F3ADB84DA021434D9DF9D6EF /* Utils */,
+				F0EFA735BFEA42B19A07D83A /* Views */,
+				F7E7F608A8AC4AF1B9717162 /* Assets.xcassets */,
+				2596A10CF43F458D9DEE142B /* Info.plist */,
+			);
+			path = VarioTB;
+			sourceTree = "<group>";
+		};
+		F0EFA735BFEA42B19A07D83A /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				1B97BD02093D4C76B69E368E /* ContentView.swift */,
+				4D5DE11B1E4E4A38B7EABC59 /* VarioBigReadout.swift */,
+				1FE22F64ACD34E6BA00C2198 /* WindDial.swift */,
+				202AE1FDABD643FD862EA766 /* ThermalRadar.swift */,
+				E5A05CEDD58D4950ABAB5BB2 /* SatelliteMapView.swift */,
+				CE43D510D017469593039B37 /* TopBar.swift */,
+				87ECC1D80DC5415D96025E75 /* BottomTelemetry.swift */,
+				078A1F546D3A4BDE9F28BB57 /* SettingsView.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		F3ADB84DA021434D9DF9D6EF /* Utils */ = {
+			isa = PBXGroup;
+			children = (
+				199930F8C7C54E6F8F9B8481 /* CoordConverter.swift */,
+			);
+			path = Utils;
+			sourceTree = "<group>";
+		};
+		F7E5062DBFD947379D8411CC /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				0570925BD1314D3EA5CF2890 /* AppSettings.swift */,
+				C89C3399EA334BE487E34303 /* ThermalPoint.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		EFAA7B5449934BBCA765E4DB /* VarioTB */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 1A2A636532AD4E22A5C8D323 /* Build configuration list for PBXNativeTarget "VarioTB" */;
+			buildPhases = (
+				2B300FFD271E45A296B01297 /* Sources */,
+				156F0795DFE348A7A08033D1 /* Frameworks */,
+				89409D27F514406392E541EA /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = VarioTB;
+			productName = VarioTB;
+			productReference = F2A854AC28C443E38C3DED67 /* VarioTB.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		8FE855F37BE344C0A3ED2BAE /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1510;
+				LastUpgradeCheck = 1510;
+				TargetAttributes = {
+					EFAA7B5449934BBCA765E4DB = {
+						CreatedOnToolsVersion = 15.1;
+					};
+				};
+			};
+			buildConfigurationList = 8D1251C367604FCEB0CD5078 /* Build configuration list for PBXProject "VarioTB" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 2B1D1595E65A4EDD95EDAB10;
+			productRefGroup = 0B7F1CC3A18B462088250EAD /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				EFAA7B5449934BBCA765E4DB /* VarioTB */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		89409D27F514406392E541EA /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E74D078FF93C434898B239C8 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		2B300FFD271E45A296B01297 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				CEA3618647D442AE9CB06FC3 /* VarioTBApp.swift in Sources */,
+				68456593A5924BB081008258 /* AppSettings.swift in Sources */,
+				A5F1E832842F42BF9282FB27 /* ThermalPoint.swift in Sources */,
+				08DE59D99EEC450AB4987449 /* LocationManager.swift in Sources */,
+				4F46C6C3F19240A99176A0E4 /* VarioManager.swift in Sources */,
+				4B2D9AABADA544F298009B59 /* WindEstimator.swift in Sources */,
+				7F77EB612C6F48C38C7237EA /* AudioEngine.swift in Sources */,
+				674EC86C245244AFA6B27E90 /* CoordConverter.swift in Sources */,
+				A57A19276CF24812AAA0D7F5 /* ContentView.swift in Sources */,
+				452318BA8DBC4984A88046BB /* VarioBigReadout.swift in Sources */,
+				3940B39A1D0744EE85BE9936 /* WindDial.swift in Sources */,
+				FC4AE83DF7A648648EC1F4BE /* ThermalRadar.swift in Sources */,
+				341EDE42433143F5BDBED298 /* SatelliteMapView.swift in Sources */,
+				3BD9B62375B84DEEA42310FF /* TopBar.swift in Sources */,
+				5021DC368A924488B78B4211 /* BottomTelemetry.swift in Sources */,
+				FB53A880A31D4EA68A9E29E6 /* SettingsView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		32E0599010E64CFF87E7DCBB /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		4403C43EF0044B3A81684E1A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = X26P47BR28;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = VarioTB/Info.plist;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.tbiliyor.VarioTB;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		848C648CD7D54918ABC6710C /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		CFB94E046E9B4327A780B924 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = X26P47BR28;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = VarioTB/Info.plist;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.tbiliyor.VarioTB;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		1A2A636532AD4E22A5C8D323 /* Build configuration list for PBXNativeTarget "VarioTB" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				4403C43EF0044B3A81684E1A /* Debug */,
+				CFB94E046E9B4327A780B924 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		8D1251C367604FCEB0CD5078 /* Build configuration list for PBXProject "VarioTB" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				32E0599010E64CFF87E7DCBB /* Debug */,
+				848C648CD7D54918ABC6710C /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 8FE855F37BE344C0A3ED2BAE /* Project object */;
+}
