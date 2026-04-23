@@ -30,6 +30,7 @@ struct SettingsView: View {
                 soundSection
                 soundTestSection
                 displaySection
+                toolbarSection
                 gpsSection
                 thermalSection
                 sensorsSection
@@ -298,6 +299,82 @@ struct SettingsView: View {
                             .stroke(Color.white.opacity(0.15), lineWidth: 1)
                     )
             }
+        }
+    }
+
+    // MARK: - Toolbar customization
+
+    /// Lets the user reorder / hide / show the customizable TopBar buttons.
+    /// Sound mute is intentionally absent — it lives in the Sound section
+    /// above so it's always easy to find in-flight.
+    private var toolbarSection: some View {
+        Section {
+            // Visible items — reorderable, removable
+            if settings.toolbarItems.isEmpty {
+                Text(L10n.string("toolbar_empty"))
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            } else {
+                ForEach(settings.toolbarItems, id: \.self) { item in
+                    HStack {
+                        Image(systemName: item.iconName)
+                            .foregroundColor(.cyan)
+                            .frame(width: 26)
+                        Text(item.displayName)
+                        Spacer()
+                        Image(systemName: "line.3.horizontal")
+                            .foregroundColor(.gray.opacity(0.4))
+                    }
+                }
+                .onMove { from, to in
+                    var list = settings.toolbarItems
+                    list.move(fromOffsets: from, toOffset: to)
+                    settings.toolbarItems = list
+                }
+                .onDelete { indices in
+                    var list = settings.toolbarItems
+                    list.remove(atOffsets: indices)
+                    settings.toolbarItems = list
+                }
+            }
+
+            // Available (hidden) items — tappable to add to the bar
+            let hidden = ToolbarItemKind.allCases
+                .filter { !settings.toolbarItems.contains($0) }
+            if !hidden.isEmpty {
+                ForEach(hidden, id: \.self) { item in
+                    Button {
+                        settings.toolbarItems.append(item)
+                    } label: {
+                        HStack {
+                            Image(systemName: item.iconName)
+                                .foregroundColor(.gray)
+                                .frame(width: 26)
+                            Text(item.displayName)
+                                .foregroundColor(.secondary)
+                            Spacer()
+                            Image(systemName: "plus.circle")
+                                .foregroundColor(.green)
+                        }
+                    }
+                }
+            }
+
+            // Reset to default
+            Button(role: .destructive) {
+                settings.toolbarItems = ToolbarItemKind.defaultOrder
+            } label: {
+                Label(L10n.string("toolbar_reset"), systemImage: "arrow.counterclockwise")
+            }
+        } header: {
+            HStack {
+                Text(L10n.string("toolbar_section"))
+                Spacer()
+                EditButton().font(.caption)
+            }
+        } footer: {
+            Text(L10n.string("toolbar_hint"))
+                .font(.caption2)
         }
     }
 

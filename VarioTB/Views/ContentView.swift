@@ -12,9 +12,12 @@ struct ContentView: View {
     @StateObject private var recorder = FlightRecorder()
     @StateObject private var liveTracker = LiveTrack24Tracker()
     @StateObject private var fai = FAITriangleDetector()
+    @StateObject private var task = CompetitionTask.loadActive() ?? CompetitionTask()
 
     @State private var showSettings = false
     @State private var showFilesList = false
+    @State private var showTaskEditor = false
+    @State private var showWaypoints = false
     @State private var updateTimer: Timer?
     @State private var autoFollow: Bool = true
     /// Bumped whenever the user taps the FAI HUD — triggers the map to
@@ -55,6 +58,7 @@ struct ContentView: View {
                                              thermals: vario.thermals,
                                              triangle: fai.bestTriangle,
                                              flightStart: fai.flightStart,
+                                             task: task.turnpoints.isEmpty ? nil : task,
                                              fitTriangleToken: fitTriangleToken,
                                              autoFollow: $autoFollow)
 
@@ -160,6 +164,12 @@ struct ContentView: View {
         .sheet(isPresented: $showFilesList) {
             FilesListView(recorder: recorder, isPresented: $showFilesList)
         }
+        .sheet(isPresented: $showTaskEditor) {
+            CompetitionTaskView(task: task, isPresented: $showTaskEditor)
+        }
+        .sheet(isPresented: $showWaypoints) {
+            WaypointsView(task: task, isPresented: $showWaypoints)
+        }
     }
 
     /// Called when share button is tapped. Exports fresh waypoints and
@@ -177,7 +187,10 @@ struct ContentView: View {
             TopBar(locationMgr: locationMgr, settings: settings,
                    simulator: simulator,
                    recorder: recorder,
+                   task: task,
                    showSettings: $showSettings,
+                   showTaskEditor: $showTaskEditor,
+                   showWaypoints: $showWaypoints,
                    onShareTap: { prepareAndShowShare() })
                 .padding(.horizontal, 12)
                 .padding(.top, 8)

@@ -1,6 +1,48 @@
 import Foundation
 import SwiftUI
 
+/// Items that can appear in the top toolbar. The user picks which ones
+/// are visible and in what order from the Settings page. Sound toggle is
+/// intentionally NOT in this list — volume/mute lives in Settings because
+/// pilots need to be able to find it reliably, not accidentally reorder
+/// it off the bar during a flight.
+enum ToolbarItemKind: String, CaseIterable, Identifiable, Codable {
+    case mapToggle    = "map"          // toggle satellite/dark background
+    case simulator    = "simulator"    // SIM start/stop pill
+    case waypoints    = "waypoints"    // pin icon → Waypoints page
+    case task         = "task"         // flag icon → CompetitionTask page
+    case share        = "share"        // upload icon → share IGC
+    case settings     = "settings"     // gear icon → Settings
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .mapToggle: return "Harita Arka Plan"
+        case .simulator: return "Simülatör"
+        case .waypoints: return "Waypointler"
+        case .task:      return "Yarışma Görevi"
+        case .share:     return "Paylaş"
+        case .settings:  return "Ayarlar"
+        }
+    }
+
+    var iconName: String {
+        switch self {
+        case .mapToggle: return "map"
+        case .simulator: return "play.circle"
+        case .waypoints: return "mappin.and.ellipse"
+        case .task:      return "flag.checkered"
+        case .share:     return "square.and.arrow.up"
+        case .settings:  return "gearshape.fill"
+        }
+    }
+
+    /// Default order shown to users who haven't customized.
+    static var defaultOrder: [ToolbarItemKind] {
+        [.mapToggle, .simulator, .waypoints, .task, .share, .settings]
+    }
+}
+
 enum CoordinateFormat: String, CaseIterable, Identifiable {
     case decimal = "DD.DDDDD°"
     case dms     = "DD° MM' SS\""
@@ -90,6 +132,22 @@ final class AppSettings: ObservableObject {
     // Map & background
     @AppStorage("showMapBackground")  var showMapBackground: Bool = false
     @AppStorage("backgroundTheme")    var backgroundThemeRaw: String = BackgroundTheme.nightAviation.rawValue
+
+    /// Comma-separated raw values of visible toolbar items in order.
+    /// Use the `toolbarItems` computed property to read/write as typed.
+    @AppStorage("toolbarItemsOrder") var toolbarItemsOrderRaw: String =
+        ToolbarItemKind.defaultOrder.map(\.rawValue).joined(separator: ",")
+
+    /// Typed view of the stored toolbar order. Unknown values are skipped.
+    var toolbarItems: [ToolbarItemKind] {
+        get {
+            let raws = toolbarItemsOrderRaw.split(separator: ",").map(String.init)
+            return raws.compactMap { ToolbarItemKind(rawValue: $0) }
+        }
+        set {
+            toolbarItemsOrderRaw = newValue.map(\.rawValue).joined(separator: ",")
+        }
+    }
 
     // Pilot info (used in IGC header and live-tracking)
     @AppStorage("pilotFirstName")     var pilotFirstName: String = ""

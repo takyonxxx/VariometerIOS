@@ -28,6 +28,8 @@
 	<string>Uçuş sırasında arka planda da konum takibi için kullanılır.</string>
 	<key>NSMotionUsageDescription</key>
 	<string>Barometrik variometer için hareket ve basınç sensörleri kullanılır.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Başka cihazlardan yarışma görevi veya waypoint listesi almak için QR kod kamerayla taranır.</string>
 	<key>NSSiriUsageDescription</key>
 	<string>Vario TB; uçuş kaydı, canlı takip ve simülatörü sesli komutla başlatıp durdurmak için Siri izni kullanır.</string>
 	<key>NSAppTransportSecurity</key>

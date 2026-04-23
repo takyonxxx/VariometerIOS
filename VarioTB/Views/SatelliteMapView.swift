@@ -8,6 +8,7 @@ struct SatelliteMapView: UIViewRepresentable {
     let thermals: [ThermalPoint]
     let triangle: FAITriangle?
     let flightStart: CLLocationCoordinate2D?   // for closing arrow
+    let task: CompetitionTask?                  // competition task overlay
     /// Changes to this UUID trigger a one-time "zoom to fit the whole
     /// triangle" animation. Set to nil to skip. Used when the user taps
     /// the FAI HUD card.
@@ -120,6 +121,39 @@ struct SatelliteMapView: UIViewRepresentable {
             mv.addOverlay(ov)
         }
 
+        // Sync competition task overlays: turnpoint cylinders (blue circles)
+        // + connecting route line. Cleared and rebuilt each update so
+        // edits appear immediately.
+        for overlay in mv.overlays
+            where overlay is TurnpointCylinderOverlay
+               || overlay is TaskRouteOverlay {
+            mv.removeOverlay(overlay)
+        }
+        for ann in mv.annotations.compactMap({ $0 as? TurnpointAnnotation }) {
+            mv.removeAnnotation(ann)
+        }
+        if let task = task, !task.turnpoints.isEmpty {
+            for (idx, tp) in task.turnpoints.enumerated() {
+                let cyl = TurnpointCylinderOverlay(turnpoint: tp)
+                mv.addOverlay(cyl)
+                let ann = TurnpointAnnotation(turnpoint: tp, index: idx + 1)
+                mv.addAnnotation(ann)
+            }
+            if task.turnpoints.count >= 2 {
+                // Compute optimal tangent route: each turnpoint's "optimal
+                // point" on its cylinder edge, minimizing total distance.
+                // Flyskyhy and XCTrack both use this optimization — the
+                // drawn route is what a pilot actually flies (tangent to
+                // cylinders, not through centers).
+                let optimal = Self.optimalRoutePoints(for: task.turnpoints)
+                for i in 0..<(task.turnpoints.count - 1) {
+                    let leg = TaskRouteOverlay(fromPoint: optimal[i],
+                                                toPoint: optimal[i + 1])
+                    mv.addOverlay(leg)
+                }
+            }
+        }
+
         // "Zoom to triangle" — only runs when the token changes (user
         // tapped the FAI HUD card). Fits all 3 turnpoints + pilot + home
         // into view with padding, animated.
@@ -157,6 +191,101 @@ struct SatelliteMapView: UIViewRepresentable {
     }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
+
+    // MARK: - Optimal route computation
+    //
+    // Each turnpoint is a cylinder. The optimal task route threads between
+    // cylinders, touching each one tangentially at the point that minimizes
+    // total path length. For competition tasks this is the distance pilots
+    // are actually scored on ("through cylinders"). Flyskyhy and XCTrack
+    // both render this optimized route.
+    //
+    // The first/last points are just the turnpoint centers (they anchor the
+    // path). Interior turnpoints get optimized. For each interior TP:
+    //
+    //   optimal_i = center_i + radius_i * unit_vector(
+    //                 (optimal_{i-1} - center_i).normalized
+    //               + (optimal_{i+1} - center_i).normalized
+    //               )
+    //
+    // i.e. on the cylinder edge in the direction of the angle bisector
+    // pointing AWAY from both neighbors. We iterate 8 passes which converges
+    // well for typical competition tasks (6-12 turnpoints).
+
+    /// Compute the optimal tangent route through the given turnpoints.
+    /// Returns one coordinate per turnpoint: the point on (or at the center
+    /// of) each cylinder that a pilot would touch along the shortest path.
+    static func optimalRoutePoints(for turnpoints: [Turnpoint]) -> [CLLocationCoordinate2D] {
+        guard turnpoints.count >= 2 else {
+            return turnpoints.map { $0.coordinate }
+        }
+
+        // We'll work in flat (lat, lon) space scaled so degrees roughly
+        // equal the same meters horizontally and vertically. This makes the
+        // geometry isotropic for the bisector math — inaccurate over long
+        // distances but fine for competition-scale tasks (< 200 km).
+        let centerLatRad = turnpoints[0].latitude * .pi / 180
+        let lonScale = cos(centerLatRad)
+
+        func toXY(_ c: CLLocationCoordinate2D) -> (x: Double, y: Double) {
+            // x = lon * lonScale, y = lat (both in degrees * lonScale effective)
+            return (c.longitude * lonScale, c.latitude)
+        }
+        func fromXY(_ p: (x: Double, y: Double)) -> CLLocationCoordinate2D {
+            CLLocationCoordinate2D(latitude: p.y, longitude: p.x / lonScale)
+        }
+
+        // Degrees per meter (approximate, WGS-84 at small scales)
+        let metersPerDeg = 111_000.0
+
+        // Initialize with cylinder centers
+        var pts: [(x: Double, y: Double)] = turnpoints.map { toXY($0.coordinate) }
+        let centers = pts
+        // Radii converted to the same scaled units (degrees-of-lat, which
+        // equals x-units after our scaling)
+        let radii = turnpoints.map { $0.radiusM / metersPerDeg }
+
+        // Iterate. First and last points stay at centers (they are the
+        // task start and finish anchors). Interior points move to each
+        // cylinder's edge along the angle bisector toward their neighbors.
+        let iterations = 8
+        for _ in 0..<iterations {
+            var next = pts
+            for i in 1..<(pts.count - 1) {
+                let c = centers[i]
+                let prev = pts[i - 1]
+                let after = pts[i + 1]
+                // Unit vectors from center to neighbors
+                let vPrev = normalized(dx: prev.x - c.x, dy: prev.y - c.y)
+                let vNext = normalized(dx: after.x - c.x, dy: after.y - c.y)
+                // Sum (the bisector direction)
+                var bx = vPrev.dx + vNext.dx
+                var by = vPrev.dy + vNext.dy
+                let blen = sqrt(bx*bx + by*by)
+                if blen < 1e-9 {
+                    // Neighbors are exactly opposite → pick perpendicular
+                    // to (next - prev) instead
+                    let dx = after.x - prev.x
+                    let dy = after.y - prev.y
+                    let perp = normalized(dx: -dy, dy: dx)
+                    bx = perp.dx; by = perp.dy
+                } else {
+                    bx /= blen; by /= blen
+                }
+                // Place point on cylinder edge along the bisector
+                next[i] = (c.x + bx * radii[i], c.y + by * radii[i])
+            }
+            pts = next
+        }
+
+        return pts.map { fromXY($0) }
+    }
+
+    private static func normalized(dx: Double, dy: Double) -> (dx: Double, dy: Double) {
+        let len = sqrt(dx*dx + dy*dy)
+        if len < 1e-12 { return (0, 0) }
+        return (dx / len, dy / len)
+    }
 
     final class Coordinator: NSObject, MKMapViewDelegate, UIGestureRecognizerDelegate {
         var parent: SatelliteMapView?
@@ -225,16 +354,32 @@ struct SatelliteMapView: UIViewRepresentable {
                 view.canShowCallout = true
                 return view
             }
+            if let tp = annotation as? TurnpointAnnotation {
+                let id = "turnpoint"
+                let view = mapView.dequeueReusableAnnotationView(withIdentifier: id)
+                    ?? MKAnnotationView(annotation: annotation, reuseIdentifier: id)
+                view.annotation = annotation
+                view.image = Self.turnpointImage(type: tp.turnpoint.type, index: tp.index)
+                view.canShowCallout = true
+                view.centerOffset = CGPoint(x: 0, y: -14)
+                return view
+            }
             return nil
         }
 
-        /// Render FAI triangle overlay and closing arrow.
+        /// Render FAI triangle overlay, closing arrow, and competition task.
         func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
             if let tri = overlay as? TriangleOverlay {
                 return TriangleOverlayRenderer(triangleOverlay: tri)
             }
             if let arrow = overlay as? ClosingArrowOverlay {
                 return ClosingArrowRenderer(arrowOverlay: arrow)
+            }
+            if let cyl = overlay as? TurnpointCylinderOverlay {
+                return TurnpointCylinderRenderer(cylinderOverlay: cyl)
+            }
+            if let route = overlay as? TaskRouteOverlay {
+                return TaskLegRenderer(leg: route)
             }
             return MKOverlayRenderer(overlay: overlay)
         }
@@ -266,6 +411,39 @@ struct SatelliteMapView: UIViewRepresentable {
                 c.setStrokeColor(UIColor.white.cgColor)
                 c.setLineWidth(2)
                 c.strokeEllipse(in: CGRect(x: 3, y: 3, width: 14, height: 14))
+            }
+        }
+
+        /// Turnpoint pin: color-coded flag with index number.
+        /// Green = takeoff, cyan = SSS, blue = turn, orange = ESS, red = goal.
+        static func turnpointImage(type: TurnpointType, index: Int) -> UIImage {
+            let color: UIColor
+            switch type {
+            case .takeoff: color = UIColor(red: 0.35, green: 0.85, blue: 0.40, alpha: 1)
+            case .sss:     color = UIColor(red: 0.35, green: 0.80, blue: 1.00, alpha: 1)
+            case .turn:    color = UIColor(red: 0.25, green: 0.55, blue: 1.00, alpha: 1)
+            case .ess:     color = UIColor(red: 1.00, green: 0.65, blue: 0.30, alpha: 1)
+            case .goal:    color = UIColor(red: 1.00, green: 0.35, blue: 0.35, alpha: 1)
+            }
+            let size = CGSize(width: 34, height: 38)
+            return UIGraphicsImageRenderer(size: size).image { ctx in
+                let c = ctx.cgContext
+                // Flag pole
+                c.setFillColor(UIColor.white.cgColor)
+                c.fill(CGRect(x: 4, y: 8, width: 2, height: 28))
+                // Flag body with index number
+                c.setFillColor(UIColor.black.withAlphaComponent(0.4).cgColor)
+                c.fillEllipse(in: CGRect(x: 6, y: 4, width: 26, height: 22))
+                c.setFillColor(color.cgColor)
+                c.fillEllipse(in: CGRect(x: 8, y: 6, width: 22, height: 18))
+                // Number
+                let attrs: [NSAttributedString.Key: Any] = [
+                    .font: UIFont.systemFont(ofSize: 11, weight: .heavy),
+                    .foregroundColor: UIColor.white,
+                ]
+                let str = NSAttributedString(string: "\(index)", attributes: attrs)
+                let size = str.size()
+                str.draw(at: CGPoint(x: 19 - size.width/2, y: 14 - size.height/2))
             }
         }
     }
@@ -468,5 +646,192 @@ final class ClosingArrowRenderer: MKOverlayRenderer {
         context.addLine(to: base2)
         context.closePath()
         context.fillPath()
+    }
+}
+
+// MARK: - Competition task overlays
+
+/// Flag-style annotation for a turnpoint. Shows the index and type-color.
+final class TurnpointAnnotation: NSObject, MKAnnotation {
+    let turnpoint: Turnpoint
+    let index: Int
+    dynamic var coordinate: CLLocationCoordinate2D
+    var title: String? { "\(index). \(turnpoint.name)" }
+    var subtitle: String? { turnpoint.summary }
+
+    init(turnpoint: Turnpoint, index: Int) {
+        self.turnpoint = turnpoint
+        self.index = index
+        self.coordinate = turnpoint.coordinate
+    }
+}
+
+/// Blue translucent cylinder overlay around a turnpoint, showing the
+/// valid radius the pilot must enter/exit. Styled after XCTrack / Flyskyhy.
+final class TurnpointCylinderOverlay: NSObject, MKOverlay {
+    let turnpoint: Turnpoint
+    let circle: MKCircle
+
+    var coordinate: CLLocationCoordinate2D { circle.coordinate }
+    var boundingMapRect: MKMapRect { circle.boundingMapRect }
+
+    init(turnpoint: Turnpoint) {
+        self.turnpoint = turnpoint
+        self.circle = MKCircle(center: turnpoint.coordinate,
+                               radius: turnpoint.radiusM)
+        super.init()
+    }
+}
+
+/// Renderer for turnpoint cylinders: blue translucent fill + solid stroke.
+/// Stroke color varies by type (start green, goal red, standard blue).
+final class TurnpointCylinderRenderer: MKCircleRenderer {
+    init(cylinderOverlay: TurnpointCylinderOverlay) {
+        super.init(circle: cylinderOverlay.circle)
+        let tp = cylinderOverlay.turnpoint
+        let color: UIColor
+        switch tp.type {
+        case .takeoff: color = UIColor(red: 0.35, green: 0.85, blue: 0.40, alpha: 1)
+        case .sss:     color = UIColor(red: 0.35, green: 0.80, blue: 1.00, alpha: 1)
+        case .turn:    color = UIColor(red: 0.25, green: 0.55, blue: 1.00, alpha: 1)
+        case .ess:     color = UIColor(red: 1.00, green: 0.65, blue: 0.30, alpha: 1)
+        case .goal:    color = UIColor(red: 1.00, green: 0.35, blue: 0.35, alpha: 1)
+        }
+        fillColor = color.withAlphaComponent(0.18)
+        strokeColor = color.withAlphaComponent(0.85)
+        lineWidth = 2
+        if tp.optional {
+            lineDashPattern = [6, 4]
+        }
+    }
+}
+
+/// One leg of the task between two already-computed optimal points on
+/// consecutive turnpoint cylinders. Drawn as a straight line from the
+/// start point to the end point (both sit on cylinder edges), with an
+/// arrowhead mid-segment showing the pilot's direction.
+///
+/// The caller computes `fromPoint` and `toPoint` via
+/// `SatelliteMapView.optimalRoutePoints(for:)`, which iteratively solves
+/// for the tangent points minimizing total task distance.
+final class TaskRouteOverlay: NSObject, MKOverlay {
+    let from: CLLocationCoordinate2D
+    let to: CLLocationCoordinate2D
+
+    var coordinate: CLLocationCoordinate2D {
+        CLLocationCoordinate2D(
+            latitude: (from.latitude + to.latitude) / 2,
+            longitude: (from.longitude + to.longitude) / 2)
+    }
+    var boundingMapRect: MKMapRect {
+        let pA = MKMapPoint(from)
+        let pB = MKMapPoint(to)
+        let minX = min(pA.x, pB.x)
+        let minY = min(pA.y, pB.y)
+        let w = abs(pA.x - pB.x)
+        let h = abs(pA.y - pB.y)
+        let pad = 2000.0
+        return MKMapRect(x: minX - pad, y: minY - pad,
+                          width: w + 2*pad, height: h + 2*pad)
+    }
+
+    init(fromPoint: CLLocationCoordinate2D, toPoint: CLLocationCoordinate2D) {
+        self.from = fromPoint
+        self.to = toPoint
+        super.init()
+    }
+}
+
+/// Custom renderer: draws a thin line from source center to target center
+/// (using MapKit's projected coordinates so it follows screen geometry),
+/// then a filled arrowhead near the target cylinder boundary.
+///
+/// The line is intentionally thin (1.5px) because competition maps often
+/// have many overlapping elements; arrowheads convey direction without
+/// needing a thick line.
+final class TaskLegRenderer: MKOverlayRenderer {
+    let leg: TaskRouteOverlay
+
+    init(leg: TaskRouteOverlay) {
+        self.leg = leg
+        super.init(overlay: leg)
+    }
+
+    override func draw(_ mapRect: MKMapRect,
+                       zoomScale: MKZoomScale,
+                       in context: CGContext) {
+        let pFrom = point(for: MKMapPoint(leg.from))
+        let pTo = point(for: MKMapPoint(leg.to))
+
+        // Line width scales with zoom so it stays readable when zoomed out.
+        // Thicker than before (was 1.5) so the route is clearly visible
+        // against the satellite map background.
+        let lineWidth = max(3.0 / zoomScale, 3.5)
+
+        // Dark navy blue — matches the Flyskyhy reference closely and
+        // stands out against both dark satellite terrain and snow/water.
+        let color = UIColor(red: 0.08, green: 0.20, blue: 0.55, alpha: 1.0).cgColor
+
+        // Draw line: center-to-center
+        context.setStrokeColor(color)
+        context.setLineWidth(lineWidth)
+        context.setLineCap(.round)
+        context.move(to: pFrom)
+        context.addLine(to: pTo)
+        context.strokePath()
+
+        // Arrowhead in the middle of the leg (segment connects two cylinder
+        // edge points now, so midpoint sits cleanly between them).
+        let dxMap = leg.to.longitude - leg.from.longitude
+        let dyMap = leg.to.latitude - leg.from.latitude
+        let lenMeters = distanceMeters(leg.from, leg.to)
+        guard lenMeters > 0 else { return }
+
+        let t: Double = 0.5
+        let arrowLat = leg.from.latitude + dyMap * t
+        let arrowLon = leg.from.longitude + dxMap * t
+        let pArrow = point(for: MKMapPoint(
+            CLLocationCoordinate2D(latitude: arrowLat, longitude: arrowLon)))
+
+        // Arrow direction = screen bearing from pFrom to pTo
+        let dx = pTo.x - pFrom.x
+        let dy = pTo.y - pFrom.y
+        let angle = atan2(dy, dx)
+
+        // Arrowhead size scales with line width so it stays proportional.
+        // Ratio tuned so the head looks balanced against the thicker line.
+        let headLen = lineWidth * 4.0
+        let headHalfWidth = lineWidth * 2.2
+
+        // Tip is at pArrow; base is behind it along the line
+        let tip = pArrow
+        let backX = tip.x - cos(angle) * headLen
+        let backY = tip.y - sin(angle) * headLen
+        // Perpendicular (left/right from the back point)
+        let perpX = -sin(angle) * headHalfWidth
+        let perpY = cos(angle) * headHalfWidth
+        let leftX = backX + perpX
+        let leftY = backY + perpY
+        let rightX = backX - perpX
+        let rightY = backY - perpY
+
+        context.setFillColor(color)
+        context.move(to: tip)
+        context.addLine(to: CGPoint(x: leftX, y: leftY))
+        context.addLine(to: CGPoint(x: rightX, y: rightY))
+        context.closePath()
+        context.fillPath()
+    }
+
+    private func distanceMeters(_ a: CLLocationCoordinate2D,
+                                _ b: CLLocationCoordinate2D) -> Double {
+        let R = 6371000.0
+        let lat1 = a.latitude * .pi / 180
+        let lat2 = b.latitude * .pi / 180
+        let dLat = (b.latitude - a.latitude) * .pi / 180
+        let dLon = (b.longitude - a.longitude) * .pi / 180
+        let h = sin(dLat/2) * sin(dLat/2) +
+                cos(lat1) * cos(lat2) * sin(dLon/2) * sin(dLon/2)
+        return 2 * R * asin(min(1, sqrt(h)))
     }
 }
