@@ -14,15 +14,12 @@ Yamaç paraşütü ve planör pilotları için SwiftUI ile yazılmış, **grid t
   <img src="docs/screenshots/competition-task-editor.png" alt="Yarışma görevi editörü" width="250">
   &nbsp;&nbsp;
   <img src="docs/screenshots/task-qr-share.png" alt="Görev QR paylaşımı" width="250">
-  &nbsp;&nbsp;
-  <img src="docs/screenshots/free-flight-panel.png" alt="Serbest uçuş paneli" width="250">
 </p>
 
 <p align="center">
   <i>1. Canlı yarışma paneli — simülatörde Ayaş 6-TP görevini uçarken: vario, task-aware HEDEF oku (pilotun uçması gereken yönü relatif olarak gösterir), yer hızı, rakım, sonraki TP'ye 868m, goal'e 14.8km, rüzgâr kadranı, termik radarı, harita üzerinde optimum tangent rotası (mavi çizgi ve oklar), reached TP'ler renkli işaretli.</i><br><br>
   <i>2. Yarışma görevi sayfası — görev mesafesi (22.7 km), 6 turnpoint, QR ile içe/dışa aktarma, başlama/deadline saatleri (UTC), TP listesi (takeoff 400m cylinder ile başlar).</i><br><br>
-  <i>3. QR paylaşımı — XCTrack v2 formatında tam uyumlu QR kod. Başka bir Vario TB veya XCTrack cihazı saniyeler içinde görevi yükler.</i><br><br>
-  <i>4. Serbest uçuş paneli — task yokken XC ve eğlence uçuşu için daha sade düzen: büyük vario, hız+rakım, wind ve radar yan yana, büyük harita, saat+pil.</i>
+  <i>3. QR paylaşımı — XCTrack v2 formatında tam uyumlu QR kod. Başka bir Vario TB veya XCTrack cihazı saniyeler içinde görevi yükler.</i>
 </p>
 
 ---
