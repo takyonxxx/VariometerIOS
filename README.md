@@ -9,17 +9,20 @@ Yamaç paraşütü ve planör pilotları için SwiftUI ile yazılmış, **grid t
 ## Ekran Görüntüleri
 
 <p align="center">
-  <img src="VarioTB/docs/screenshots/free-flight-panel.png" alt="Serbest uçuş paneli" width="250">
+  <img src="VarioTB/docs/screenshots/competition-live-panel.png" alt="Canlı yarışma paneli" width="250">
   &nbsp;&nbsp;
   <img src="VarioTB/docs/screenshots/competition-task-editor.png" alt="Yarışma görevi editörü" width="250">
   &nbsp;&nbsp;
   <img src="VarioTB/docs/screenshots/task-qr-share.png" alt="Görev QR paylaşımı" width="250">
+  &nbsp;&nbsp;
+  <img src="VarioTB/docs/screenshots/free-flight-panel.png" alt="Serbest uçuş paneli" width="250">
 </p>
 
 <p align="center">
-  <i>Sol: serbest uçuş paneli — vario + yer hızı/rakım + yatay windsock + termik radarı + canlı uydu haritası, altta saat ve pil. Tüm kartlar uzun bas ile sürükle-bırak düzenlenebilir.</i><br><br>
-  <i>Orta: yarışma görevi sayfası — görev mesafesi, turnpoint sayısı, QR ile içe/dışa aktarma, başlama ve deadline saatleri, 6 TP'lik Ayaş task listesi.</i><br><br>
-  <i>Sağ: QR paylaşımı — XCTrack v2 formatında tam uyumlu QR kod. Başka bir Vario TB veya XCTrack cihazı bu QR'ı tarayarak görevi saniyeler içinde yükler.</i>
+  <i>1. Canlı yarışma paneli — simülatörde Ayaş 6-TP görevini uçarken: vario, task-aware HEDEF oku (pilotun uçması gereken yönü relatif olarak gösterir), yer hızı, rakım, sonraki TP'ye 868m, goal'e 14.8km, rüzgâr kadranı, termik radarı, harita üzerinde optimum tangent rotası (mavi çizgi ve oklar), reached TP'ler renkli işaretli.</i><br><br>
+  <i>2. Yarışma görevi sayfası — görev mesafesi (22.7 km), 6 turnpoint, QR ile içe/dışa aktarma, başlama/deadline saatleri (UTC), TP listesi (takeoff 400m cylinder ile başlar).</i><br><br>
+  <i>3. QR paylaşımı — XCTrack v2 formatında tam uyumlu QR kod. Başka bir Vario TB veya XCTrack cihazı saniyeler içinde görevi yükler.</i><br><br>
+  <i>4. Serbest uçuş paneli — task yokken XC ve eğlence uçuşu için daha sade düzen: büyük vario, hız+rakım, wind ve radar yan yana, büyük harita, saat+pil.</i>
 </p>
 
 ---

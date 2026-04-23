@@ -176,13 +176,19 @@ struct PanelLayout: Codable {
         PanelLayout(cards: cards.filter { $0.id != id })
     }
 
-    /// Return layout with a card added at the next free row (at column 0,
-    /// below every other card, so it can never overlap anything).
+    /// Add a card at the TOP of the grid (row 0, col 0) and push every
+    /// existing card downward to make room. This makes newly-added
+    /// cards immediately visible — the pilot can see their new card
+    /// without having to scroll. It's the same cascade-push logic that
+    /// drag-and-drop uses, just kicked off by a synthetic insertion.
     func adding(_ kind: InstrumentKind) -> PanelLayout {
-        let nextRow = (cards.map { $0.row + $0.height }.max() ?? 0)
         var newList = cards
-        newList.append(PanelCard(kind: kind, col: 0, row: nextRow))
-        return PanelLayout(cards: newList)
+        let newCard = PanelCard(kind: kind, col: 0, row: 0)
+        newList.append(newCard)
+        // Let placing() run the cascade: newCard at (0, 0), anything it
+        // collides with gets pushed down. Result: newCard on top,
+        // original cards shifted by exactly enough rows to clear it.
+        return PanelLayout(cards: newList).placing(newCard.id, col: 0, row: 0)
     }
 
     /// Kinds not currently present — candidates for adding.

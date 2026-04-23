@@ -229,14 +229,16 @@ final class CompetitionTask: ObservableObject, Codable {
     /// The first element is always the pilot; the last is the goal
     /// turnpoint's center (we touch goal by entering its cylinder,
     /// which is the classic XCTrack convention for scoring).
-    func optimalRemainingPoints(from pilot: CLLocationCoordinate2D)
+    func optimalRemainingPoints(from pilot: CLLocationCoordinate2D,
+                                 overrideRemaining: [Turnpoint]? = nil)
         -> [CLLocationCoordinate2D]
     {
-        // Collect all turnpoints not yet reached. We keep the pilot as a
-        // "virtual anchor" at the start and the final TP's center as the
-        // fixed endpoint (goal), then iteratively refine the interior
-        // tangent points.
-        let remaining = turnpoints.filter { !reachedTPIds.contains($0.id) }
+        // Collect all turnpoints not yet reached (unless the caller
+        // passed an explicit override — used internally to evaluate
+        // "optimum distance from a specific TP onward" without the
+        // pilot coinciding with a cylinder edge).
+        let remaining = overrideRemaining
+                         ?? turnpoints.filter { !reachedTPIds.contains($0.id) }
         guard !remaining.isEmpty else { return [pilot] }
 
         // Work in scaled (lat, lon) space so the bisector math is
@@ -312,9 +314,25 @@ final class CompetitionTask: ObservableObject, Codable {
     /// next un-reached turnpoint. Accounts for cylinder radii — this is
     /// the shortest legal path to "tag" the next gate. Returns 0 when
     /// pilot is already inside the next TP's cylinder.
+    ///
+    /// When the pilot is VERY close to the next TP's cylinder edge, the
+    /// tangent-point calculation becomes unstable (the bisector swings
+    /// around as the pilot moves through the vicinity), which causes
+    /// the displayed distance to bounce up and down by tens of metres.
+    /// We guard against this by just returning straight-line distance
+    /// to the cylinder perimeter whenever the pilot is within 2×radius
+    /// of the next TP's center — at that range the tangent refinement
+    /// isn't helping anyway.
     func distanceToNextTurnpoint(from pilot: CLLocationCoordinate2D) -> Double? {
         guard let next = nextTurnpoint(pilot: pilot) else { return nil }
-        if isInsideCylinder(pilot: pilot, tp: next) { return 0 }
+        let dCenter = Self.haversine(pilot, next.coordinate)
+        if dCenter <= next.radiusM + Self.gpsToleranceM { return 0 }
+        if dCenter < next.radiusM * 2 {
+            // Close to the cylinder — return the straight-line distance
+            // to its perimeter (this is what the pilot perceives and is
+            // stable as they approach).
+            return max(0, dCenter - next.radiusM)
+        }
         let pts = optimalRemainingPoints(from: pilot)
         guard pts.count >= 2 else { return nil }
         return Self.haversine(pts[0], pts[1])
@@ -324,14 +342,60 @@ final class CompetitionTask: ObservableObject, Codable {
     /// remaining tangent legs. Equals the total remaining task distance
     /// the pilot still has to fly. Returns 0 once the pilot has entered
     /// the goal cylinder (task complete).
+    ///
+    /// Uses the same "close-to-next" stabilisation as distanceToNext:
+    /// when the pilot is within 2×radius of the next TP, we compute
+    /// `(straight-line to perimeter) + (optimum distance from TP center
+    /// to goal)` rather than running the full bisector refinement with
+    /// the pilot as a near-coincident anchor (which oscillates).
     func distanceToGoal(from pilot: CLLocationCoordinate2D) -> Double? {
         guard let goal = turnpoints.last else { return nil }
-        // Short-circuit: pilot already inside goal cylinder → task done.
-        if isInsideCylinder(pilot: pilot, tp: goal) {
-            return 0
+        if isInsideCylinder(pilot: pilot, tp: goal) { return 0 }
+
+        guard let next = nextTurnpoint(pilot: pilot) else {
+            // All TPs reached but pilot not yet in goal cylinder —
+            // measure from current position to goal center.
+            return Self.haversine(pilot, goal.coordinate)
         }
+        let dCenterNext = Self.haversine(pilot, next.coordinate)
+        if dCenterNext < next.radiusM * 2 {
+            // Stable branch: pilot→perimeter, then the optimum distance
+            // from the NEXT TP's center through the remaining task.
+            let toPerim = max(0, dCenterNext - next.radiusM)
+            let rest = optimumDistanceFrom(tpIndex: turnpointIndex(next),
+                                            includingStart: false)
+            return toPerim + rest
+        }
+
         let pts = optimalRemainingPoints(from: pilot)
         guard pts.count >= 2 else { return nil }
+        var total = 0.0
+        for i in 0..<(pts.count - 1) {
+            total += Self.haversine(pts[i], pts[i + 1])
+        }
+        return total
+    }
+
+    /// Index of `tp` within the task's turnpoint array, or -1 if not found.
+    private func turnpointIndex(_ tp: Turnpoint) -> Int {
+        turnpoints.firstIndex(where: { $0.id == tp.id }) ?? -1
+    }
+
+    /// Optimal tangent-route distance from turnpoint at `tpIndex` (its
+    /// center) through all subsequent TPs to goal. Used by the stable
+    /// branch of distanceToGoal when the pilot is near the next TP.
+    private func optimumDistanceFrom(tpIndex: Int,
+                                     includingStart: Bool) -> Double {
+        guard tpIndex >= 0, tpIndex < turnpoints.count else { return 0 }
+        let anchor = turnpoints[tpIndex].coordinate
+        let remaining = Array(turnpoints.suffix(from: tpIndex + 1))
+        if remaining.isEmpty {
+            return includingStart ? 0 : 0   // anchor == goal
+        }
+        // Reuse the bisector algorithm with the anchor as "pilot".
+        let pts = optimalRemainingPoints(from: anchor,
+                                          overrideRemaining: remaining)
+        guard pts.count >= 2 else { return 0 }
         var total = 0.0
         for i in 0..<(pts.count - 1) {
             total += Self.haversine(pts[i], pts[i + 1])

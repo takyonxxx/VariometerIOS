@@ -286,71 +286,141 @@ struct PanelView: View {
 
     /// Floating footer shown while the panel is in edit mode. Contains
     /// the layout reset buttons (competition/free-flight), confirm, and
-    /// the add-hidden-card chooser. Kept as a nested struct so
-    /// ContentView can pin it to the bottom of the screen as a fixed
-    /// overlay outside the scroll view — otherwise the pilot would have
-    /// to scroll to the end of a tall panel just to tap "Tamam".
+    /// an "Ekle" button that opens a sheet listing every hidden card.
+    /// Kept as a nested struct so ContentView can pin it to the bottom
+    /// of the screen as a fixed overlay outside the scroll view.
     struct EditFooter: View {
         @ObservedObject var settings: AppSettings
         @Binding var editMode: Bool
+        @State private var showAddSheet = false
 
         var body: some View {
             VStack(spacing: 8) {
-                if !settings.panelLayout.hiddenKinds.isEmpty {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
-                            ForEach(settings.panelLayout.hiddenKinds) { kind in
-                                Button {
-                                    settings.panelLayout = settings.panelLayout.adding(kind)
-                                } label: {
-                                    HStack(spacing: 4) {
-                                        Image(systemName: "plus.circle.fill")
-                                            .foregroundColor(.green)
-                                        Image(systemName: kind.iconName)
-                                        Text(kind.displayName)
-                                            .font(.system(size: 12, weight: .semibold))
-                                    }
-                                    .padding(.horizontal, 10).padding(.vertical, 6)
-                                    .background(Capsule().fill(Color.black.opacity(0.75)))
-                                    .foregroundColor(.white)
-                                }
-                            }
-                        }
-                        .padding(.horizontal, 12)
+                // Row 1: Ekle (add card) + Tamam (confirm/exit edit).
+                // Primary actions — adding content and finishing the
+                // edit session — so they sit on top.
+                HStack(spacing: 10) {
+                    let canAdd = !settings.panelLayout.hiddenKinds.isEmpty
+                    Button {
+                        showAddSheet = true
+                    } label: {
+                        Label("Ekle", systemImage: "plus.circle.fill")
+                            .font(.system(size: 14, weight: .semibold))
+                            .padding(.horizontal, 16).padding(.vertical, 10)
+                            .background(
+                                RoundedRectangle(cornerRadius: 10)
+                                    .fill(Color.black.opacity(0.75))
+                            )
+                            .foregroundColor(canAdd ? .green : .white.opacity(0.25))
+                    }
+                    .disabled(!canAdd)
+
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) { editMode = false }
+                    } label: {
+                        Label("Tamam", systemImage: "checkmark.circle.fill")
+                            .font(.system(size: 15, weight: .bold))
+                            .padding(.horizontal, 18).padding(.vertical, 10)
+                            .background(
+                                RoundedRectangle(cornerRadius: 10)
+                                    .fill(Color.cyan)
+                            )
+                            .foregroundColor(.black)
                     }
                 }
 
-                HStack(spacing: 8) {
+                // Row 2: Layout presets. Secondary actions — useful
+                // but not every-session taps.
+                HStack(spacing: 10) {
                     Button(role: .destructive) {
                         settings.panelLayout = PanelLayout.competitionLayout
                     } label: {
                         Label("Yarışma", systemImage: "flag.checkered")
-                            .font(.system(size: 11, weight: .semibold))
-                            .padding(.horizontal, 10).padding(.vertical, 7)
-                            .background(Capsule().fill(Color.black.opacity(0.75)))
+                            .font(.system(size: 14, weight: .semibold))
+                            .padding(.horizontal, 16).padding(.vertical, 10)
+                            .background(
+                                RoundedRectangle(cornerRadius: 10)
+                                    .fill(Color.black.opacity(0.75))
+                            )
                             .foregroundColor(.orange)
                     }
                     Button(role: .destructive) {
                         settings.panelLayout = PanelLayout.freeFlightLayout
                     } label: {
                         Label("Serbest", systemImage: "paperplane.fill")
-                            .font(.system(size: 11, weight: .semibold))
-                            .padding(.horizontal, 10).padding(.vertical, 7)
-                            .background(Capsule().fill(Color.black.opacity(0.75)))
+                            .font(.system(size: 14, weight: .semibold))
+                            .padding(.horizontal, 16).padding(.vertical, 10)
+                            .background(
+                                RoundedRectangle(cornerRadius: 10)
+                                    .fill(Color.black.opacity(0.75))
+                            )
                             .foregroundColor(.green)
-                    }
-                    Button {
-                        withAnimation(.easeInOut(duration: 0.2)) { editMode = false }
-                    } label: {
-                        Label("Tamam", systemImage: "checkmark.circle.fill")
-                            .font(.system(size: 12, weight: .bold))
-                            .padding(.horizontal, 12).padding(.vertical, 7)
-                            .background(Capsule().fill(Color.cyan))
-                            .foregroundColor(.black)
                     }
                 }
             }
             .padding(.bottom, 8)
+            .sheet(isPresented: $showAddSheet) {
+                AddCardSheet(settings: settings, isPresented: $showAddSheet)
+            }
+        }
+    }
+
+    /// Sheet that presents every hidden card type as a tappable list row.
+    /// Tapping a row inserts the card into the panel at the top and
+    /// dismisses the sheet. The list is scrollable for when lots of
+    /// cards are hidden, and each row shows the icon + name for easy
+    /// recognition.
+    struct AddCardSheet: View {
+        @ObservedObject var settings: AppSettings
+        @Binding var isPresented: Bool
+
+        var body: some View {
+            NavigationStack {
+                List {
+                    let hidden = settings.panelLayout.hiddenKinds
+                    if hidden.isEmpty {
+                        Text("Tüm kartlar zaten panelde.")
+                            .foregroundColor(.secondary)
+                    } else {
+                        Section {
+                            ForEach(hidden) { kind in
+                                Button {
+                                    settings.panelLayout =
+                                        settings.panelLayout.adding(kind)
+                                    isPresented = false
+                                } label: {
+                                    HStack(spacing: 12) {
+                                        Image(systemName: kind.iconName)
+                                            .font(.system(size: 18, weight: .semibold))
+                                            .foregroundColor(.green)
+                                            .frame(width: 28)
+                                        Text(kind.displayName)
+                                            .font(.system(size: 16, weight: .medium))
+                                            .foregroundColor(.primary)
+                                        Spacer()
+                                        Image(systemName: "plus.circle.fill")
+                                            .foregroundColor(.green)
+                                    }
+                                    .contentShape(Rectangle())
+                                    .padding(.vertical, 4)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        } header: {
+                            Text("Eklenebilir Kartlar")
+                        } footer: {
+                            Text("Eklenen kart panelin en üstüne yerleşir, mevcut kartlar bir satır aşağı kayar.")
+                        }
+                    }
+                }
+                .navigationTitle("Kart Ekle")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Kapat") { isPresented = false }
+                    }
+                }
+            }
         }
     }
 
@@ -686,42 +756,39 @@ private struct CourseCard: View {
     let pilotCoord: CLLocationCoordinate2D?
     @ObservedObject var task: CompetitionTask
 
-    /// Bearing to show to the pilot. Nil if task active but no next point.
-    private var targetBearing: Double? {
-        if isTaskActive {
-            guard let p = pilotCoord else { return nil }
-            return task.bearingToNextTurnpoint(from: p)
-        }
-        return courseDeg
-    }
-
-    /// How much to rotate the arrow so it shows direction RELATIVE TO
-    /// the pilot's current heading. 0° = ahead, 90° = right, 180° = behind.
+    /// Arrow rotation relative to pilot's heading.
+    ///
+    /// - Task active AND a next TP exists:
+    ///     Points at the next turnpoint. 0° (up) = TP is directly
+    ///     ahead of where the pilot is flying; 90° (right) = TP is to
+    ///     the pilot's right; etc. Formula: bearing-to-TP − course.
+    ///
+    /// - Otherwise (no task, task complete, or no GPS fix yet):
+    ///     Points at true north, relative to pilot's heading. So the
+    ///     arrow rotates as the pilot turns — N stays pinned to the
+    ///     world, not to the card. Formula: −course.
     private var arrowRotation: Angle {
-        guard let target = targetBearing else { return .zero }
-        if isTaskActive {
-            return .degrees(target - courseDeg)
-        } else {
-            // In free flight the "target" IS the course, so arrow always
-            // points straight up (makes the big number the main signal).
-            return .zero
+        if isTaskActive, let p = pilotCoord,
+           let bearing = task.bearingToNextTurnpoint(from: p) {
+            return .degrees(bearing - courseDeg)
         }
+        // Fallback: arrow points north regardless of what the pilot
+        // is doing. When the pilot flies north, course = 0° and the
+        // arrow sits straight up; when they head east, course = 90°
+        // and the arrow swings to the left (north is to their left).
+        return .degrees(-courseDeg)
     }
 
     var body: some View {
         GeometryReader { geo in
-            let scale = min(geo.size.width / 120.0, geo.size.height / 110.0)
-            let degSize = max(9.0, min(16.0, 10.0 * scale))
-            // Arrow fills ~70% of the shorter axis — visually dominant.
-            // Bearing text sits in the bottom-right corner at a small
-            // size so it doesn't compete with the arrow for attention.
-            let arrowSize = min(geo.size.width, geo.size.height) * 0.70
+            // Single big arrow, no bearing text — the arrow's direction
+            // alone tells the pilot what they need to know.
+            let arrowSize = min(geo.size.width, geo.size.height) * 0.75
 
-            ZStack(alignment: .bottomTrailing) {
+            ZStack {
                 RoundedRectangle(cornerRadius: 10)
                     .fill(Color.black.opacity(0.55))
 
-                // Arrow centered in the full card
                 ArrowShape()
                     .fill(
                         LinearGradient(
@@ -731,23 +798,6 @@ private struct CourseCard: View {
                     .frame(width: arrowSize, height: arrowSize)
                     .rotationEffect(arrowRotation)
                     .animation(.easeOut(duration: 0.25), value: arrowRotation)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-                // Small bearing readout in the bottom-right corner
-                if let target = targetBearing {
-                    Text(String(format: "%.0f°", target))
-                        .font(.system(size: degSize, weight: .bold, design: .rounded))
-                        .foregroundColor(.orange)
-                        .monospacedDigit()
-                        .padding(.trailing, 8)
-                        .padding(.bottom, 6)
-                } else {
-                    Text("—")
-                        .font(.system(size: degSize, weight: .bold, design: .rounded))
-                        .foregroundColor(.gray)
-                        .padding(.trailing, 8)
-                        .padding(.bottom, 6)
-                }
             }
         }
     }
