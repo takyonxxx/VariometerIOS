@@ -1,5 +1,6 @@
 import Foundation
 import CoreLocation
+import UIKit
 
 /// Type of turnpoint in a paragliding competition task.
 enum TurnpointType: String, Codable, CaseIterable, Identifiable {
@@ -141,6 +142,14 @@ final class CompetitionTask: ObservableObject, Codable {
     /// convention (pilots re-enter the pre-start zone at launch).
     @Published var reachedTPIds: Set<UUID> = []
 
+    /// Pumped every time a new turnpoint is reached. Views observe this
+    /// to trigger reach-feedback animations (colour flash, haptic, etc).
+    /// nil at startup; set to the TP's id inside updateProgress when a
+    /// new cylinder is entered. Cleared by subscribers after they've
+    /// reacted (or left set — re-reads are idempotent since the id
+    /// won't change until the next reach).
+    @Published var lastReachEvent: UUID? = nil
+
     /// GPS tolerance applied to cylinder entry checks. Real pilots don't
     /// get perfect fixes — 10-15m error is normal. We widen each cylinder
     /// by this much when deciding "pilot reached the TP" so a pilot who
@@ -163,6 +172,15 @@ final class CompetitionTask: ObservableObject, Codable {
             let d = Self.haversine(pilot, tp.coordinate)
             if d <= tp.radiusM + Self.gpsToleranceM {
                 reachedTPIds.insert(tp.id)
+                // Broadcast the reach event. Audible chime + haptic
+                // fire immediately; any visible flash in the UI (course
+                // card, map annotation, etc.) latches onto the
+                // published id via its own @Published observer.
+                lastReachEvent = tp.id
+                ChimePlayer.shared.playReachChime()
+                DispatchQueue.main.async {
+                    UINotificationFeedbackGenerator().notificationOccurred(.success)
+                }
                 continue
             }
             // Not in this cylinder yet — can't look past it.

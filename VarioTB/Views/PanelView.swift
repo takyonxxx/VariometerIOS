@@ -756,49 +756,66 @@ private struct CourseCard: View {
     let pilotCoord: CLLocationCoordinate2D?
     @ObservedObject var task: CompetitionTask
 
-    /// Arrow rotation relative to pilot's heading.
-    ///
-    /// - Task active AND a next TP exists:
-    ///     Points at the next turnpoint. 0° (up) = TP is directly
-    ///     ahead of where the pilot is flying; 90° (right) = TP is to
-    ///     the pilot's right; etc. Formula: bearing-to-TP − course.
-    ///
-    /// - Otherwise (no task, task complete, or no GPS fix yet):
-    ///     Points at true north, relative to pilot's heading. So the
-    ///     arrow rotates as the pilot turns — N stays pinned to the
-    ///     world, not to the card. Formula: −course.
+    /// Flash state: when a turnpoint is reached the card briefly tints
+    /// green and scales up slightly, then eases back. Triggered by
+    /// observing task.lastReachEvent.
+    @State private var isFlashing: Bool = false
+
     private var arrowRotation: Angle {
         if isTaskActive, let p = pilotCoord,
            let bearing = task.bearingToNextTurnpoint(from: p) {
             return .degrees(bearing - courseDeg)
         }
-        // Fallback: arrow points north regardless of what the pilot
-        // is doing. When the pilot flies north, course = 0° and the
-        // arrow sits straight up; when they head east, course = 90°
-        // and the arrow swings to the left (north is to their left).
         return .degrees(-courseDeg)
+    }
+
+    /// Gradient used to fill the arrow. Normally orange→red; during the
+    /// reach flash we swap to green→mint for ~0.7s so the colour change
+    /// is obvious even in peripheral vision.
+    private var arrowColors: [Color] {
+        isFlashing
+            ? [Color.green, Color(red: 0.4, green: 1.0, blue: 0.6)]
+            : [Color.orange, Color.red]
     }
 
     var body: some View {
         GeometryReader { geo in
-            // Single big arrow, no bearing text — the arrow's direction
-            // alone tells the pilot what they need to know.
             let arrowSize = min(geo.size.width, geo.size.height) * 0.75
 
             ZStack {
                 RoundedRectangle(cornerRadius: 10)
-                    .fill(Color.black.opacity(0.55))
+                    .fill(isFlashing
+                          ? Color.green.opacity(0.35)
+                          : Color.black.opacity(0.55))
+                    .animation(.easeInOut(duration: 0.25), value: isFlashing)
 
                 ArrowShape()
                     .fill(
                         LinearGradient(
-                            colors: [Color.orange, Color.red],
+                            colors: arrowColors,
                             startPoint: .top, endPoint: .bottom)
                     )
                     .frame(width: arrowSize, height: arrowSize)
+                    .scaleEffect(isFlashing ? 1.15 : 1.0)
                     .rotationEffect(arrowRotation)
                     .animation(.easeOut(duration: 0.25), value: arrowRotation)
+                    .animation(.spring(response: 0.3, dampingFraction: 0.55), value: isFlashing)
             }
+            .onChange(of: task.lastReachEvent) { _ in
+                // Fire the flash. We don't care which TP was reached —
+                // every reach triggers the same feedback.
+                flash()
+            }
+        }
+    }
+
+    /// Trigger a brief colour+scale flash. Re-entry safe: a new reach
+    /// during an ongoing flash re-runs the animation from its peak,
+    /// which reads as continuous reach-to-reach feedback.
+    private func flash() {
+        isFlashing = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
+            isFlashing = false
         }
     }
 }

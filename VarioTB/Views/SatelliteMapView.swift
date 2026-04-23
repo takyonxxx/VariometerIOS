@@ -488,15 +488,76 @@ struct SatelliteMapView: UIViewRepresentable {
             return MKOverlayRenderer(overlay: overlay)
         }
 
+        /// Pilot marker drawn as a stylised paragliding silhouette —
+        /// curved wing on top with a pilot figure suspended beneath.
+        /// Uses bright yellow with a dark outline so it stays visible
+        /// against both green terrain and the blue task route lines.
+        /// Size 36×36 in points — slightly larger than the old dot so
+        /// the silhouette detail reads clearly on retina screens.
         static let pilotImage: UIImage = {
-            let size = CGSize(width: 22, height: 22)
+            let size = CGSize(width: 36, height: 36)
             return UIGraphicsImageRenderer(size: size).image { ctx in
                 let c = ctx.cgContext
-                c.setFillColor(UIColor.cyan.cgColor)
-                c.fillEllipse(in: CGRect(x: 4, y: 4, width: 14, height: 14))
-                c.setStrokeColor(UIColor.white.cgColor)
-                c.setLineWidth(2)
-                c.strokeEllipse(in: CGRect(x: 4, y: 4, width: 14, height: 14))
+                let fill = UIColor(red: 1.0, green: 0.82, blue: 0.08, alpha: 1.0)   // vivid yellow
+                let stroke = UIColor.black
+                c.setFillColor(fill.cgColor)
+                c.setStrokeColor(stroke.cgColor)
+                c.setLineJoin(.round)
+                c.setLineCap(.round)
+                c.setLineWidth(1.2)
+
+                // Wing — a broad arc like a rainbow cap across the top
+                // third of the icon. Drawn as a filled path between
+                // two arcs (outer curve + inner curve).
+                let wing = UIBezierPath()
+                wing.move(to: CGPoint(x: 4, y: 12))
+                wing.addCurve(to: CGPoint(x: 32, y: 12),
+                              controlPoint1: CGPoint(x: 10, y: 1),
+                              controlPoint2: CGPoint(x: 26, y: 1))
+                wing.addCurve(to: CGPoint(x: 28, y: 15),
+                              controlPoint1: CGPoint(x: 31, y: 14),
+                              controlPoint2: CGPoint(x: 29.5, y: 14.5))
+                wing.addCurve(to: CGPoint(x: 8, y: 15),
+                              controlPoint1: CGPoint(x: 22, y: 6),
+                              controlPoint2: CGPoint(x: 14, y: 6))
+                wing.addCurve(to: CGPoint(x: 4, y: 12),
+                              controlPoint1: CGPoint(x: 6.5, y: 14.5),
+                              controlPoint2: CGPoint(x: 5, y: 14))
+                wing.close()
+                wing.fill()
+                wing.stroke()
+
+                // Suspension lines — from the wing's underside to the
+                // pilot's shoulders.
+                c.setLineWidth(1.0)
+                c.setStrokeColor(stroke.cgColor)
+                c.move(to: CGPoint(x: 9, y: 14))
+                c.addLine(to: CGPoint(x: 16, y: 24))
+                c.move(to: CGPoint(x: 27, y: 14))
+                c.addLine(to: CGPoint(x: 20, y: 24))
+                c.strokePath()
+
+                // Pilot head — small filled circle.
+                c.setFillColor(fill.cgColor)
+                c.setStrokeColor(stroke.cgColor)
+                c.setLineWidth(1.0)
+                let head = CGRect(x: 16, y: 20, width: 4, height: 4)
+                c.fillEllipse(in: head)
+                c.strokeEllipse(in: head)
+
+                // Pilot body — a rounded triangle / capsule below the
+                // head, reads as a seated harness silhouette.
+                let body = UIBezierPath()
+                body.move(to: CGPoint(x: 15, y: 25))
+                body.addLine(to: CGPoint(x: 21, y: 25))
+                body.addQuadCurve(to: CGPoint(x: 19, y: 33),
+                                   controlPoint: CGPoint(x: 22, y: 30))
+                body.addLine(to: CGPoint(x: 17, y: 33))
+                body.addQuadCurve(to: CGPoint(x: 15, y: 25),
+                                   controlPoint: CGPoint(x: 14, y: 30))
+                body.close()
+                body.fill()
+                body.stroke()
             }
         }()
 
@@ -868,13 +929,14 @@ final class TaskLegRenderer: MKOverlayRenderer {
         let pTo = point(for: MKMapPoint(leg.to))
 
         // Line width scales with zoom so it stays readable when zoomed out.
-        // Thicker than before (was 1.5) so the route is clearly visible
-        // against the satellite map background.
-        let lineWidth = max(3.0 / zoomScale, 3.5)
+        // Bumped from 3.5 to 5.0 base so the optimum route reads clearly
+        // against both terrain and open sky in the satellite view.
+        let lineWidth = max(4.5 / zoomScale, 5.0)
 
-        // Dark navy blue — matches the Flyskyhy reference closely and
-        // stands out against both dark satellite terrain and snow/water.
-        let color = UIColor(red: 0.08, green: 0.20, blue: 0.55, alpha: 1.0).cgColor
+        // Lighter, more saturated blue than the old navy. Picks up well
+        // against green terrain and dark areas while still feeling
+        // "route-like" (compare: Google Maps route blue, Flyskyhy cyan).
+        let color = UIColor(red: 0.20, green: 0.55, blue: 1.00, alpha: 1.0).cgColor
 
         // Draw line: center-to-center
         context.setStrokeColor(color)
