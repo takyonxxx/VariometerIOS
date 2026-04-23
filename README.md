@@ -9,13 +9,13 @@ Yamaç paraşütü ve planör pilotları için SwiftUI ile yazılmış, **grid t
 ## Ekran Görüntüleri
 
 <p align="center">
-  <img src="VarioTB/docs/screenshots/competition-live-panel.png" alt="Canlı yarışma paneli" width="250">
+  <img src="docs/screenshots/competition-live-panel.png" alt="Canlı yarışma paneli" width="250">
   &nbsp;&nbsp;
-  <img src="VarioTB/docs/screenshots/competition-task-editor.png" alt="Yarışma görevi editörü" width="250">
+  <img src="docs/screenshots/competition-task-editor.png" alt="Yarışma görevi editörü" width="250">
   &nbsp;&nbsp;
-  <img src="VarioTB/docs/screenshots/task-qr-share.png" alt="Görev QR paylaşımı" width="250">
+  <img src="docs/screenshots/task-qr-share.png" alt="Görev QR paylaşımı" width="250">
   &nbsp;&nbsp;
-  <img src="VarioTB/docs/screenshots/free-flight-panel.png" alt="Serbest uçuş paneli" width="250">
+  <img src="docs/screenshots/free-flight-panel.png" alt="Serbest uçuş paneli" width="250">
 </p>
 
 <p align="center">
@@ -138,50 +138,52 @@ open VarioTB.xcodeproj
 ## Dosya yapısı
 
 ```
-VarioTB/
-├── VarioTBApp.swift               App entry + audio session setup
-├── Info.plist                     İzinler, background modes, ATS exception
-├── Assets.xcassets/               App icon
+.
+├── README.md
 ├── docs/screenshots/              README ekran görüntüleri
-├── Models/
-│   ├── AppSettings.swift          @AppStorage ayarlar + pilot/glider
-│   ├── PanelLayout.swift          Grid layout + card kinds + swap/placing
-│   ├── CompetitionTask.swift      Task + turnpoint + optimal tangent + reach
-│   ├── ThermalPoint.swift         ThermalPoint + ThermalSource(.real/.simulated)
-│   ├── WaypointLibrary.swift      JSON waypoint persistence
-│   └── L10n.swift                 TR/EN çeviri + LanguagePreference singleton
-├── Intents/
-│   └── VarioTBIntents.swift       Siri App Intents + AppShortcutsProvider
-├── Managers/
-│   ├── LocationManager.swift      GPS + CMAltimeter + simulator injection
-│   ├── VarioManager.swift         Vario filter + termik tespit (6s streak)
-│   ├── WindEstimator.swift        Circling-based rüzgâr (course spread >90°)
-│   ├── FlightSimulator.swift      Task-aware simulator (cylinder entry, thermals)
-│   ├── FAITriangleDetector.swift  O(n³) FAI triangle search, flight-start tracking
-│   ├── IGCRecorder.swift          FAI IGC B-record / H-record yazar
-│   ├── WaypointExporter.swift     SeeYou CUP formatı
-│   ├── FlightRecorder.swift       IGC + waypoint koordinatör + otomatik start/stop
-│   ├── KeychainStore.swift        Keychain wrapper (LiveTrack24 şifresi)
-│   └── LiveTrack24Tracker.swift   Session-aware LT24 protocol client
-├── Audio/
-│   └── AudioEngine.swift          AVAudioSourceNode DSP (4 harmonik, cadence)
-├── Utils/
-│   ├── CoordConverter.swift       DMS/DM/UTM/MGRS dönüşümleri
-│   └── TaskQRCodec.swift          XCTrack v1/v2/XCTSKZ polyline codec
-└── Views/
-    ├── ContentView.swift          ZStack + panel grid + task fit observer
-    ├── PanelView.swift            Grid renderer + drag/resize + edit footer
-    ├── TopBar.swift               GPS pill + SIM + waypoints + task + share + settings
-    ├── SatelliteMapView.swift     MapKit + task overlay + FAI + recenter
-    ├── WindDial.swift             Yatay windsock + tick + N/E/S/W
-    ├── ThermalRadar.swift         Tüm termiklerin radar ekranı
-    ├── CompetitionTaskView.swift  Task editörü + QR scan/share + timing
-    ├── WaypointsView.swift        Waypoint kütüphanesi CRUD
-    ├── TurnpointEditor.swift      Tek TP edit sayfası
-    ├── TaskQRCaptureView.swift    Kamera QR tarayıcı
-    ├── SettingsView.swift         Form — tamamen L10n üzerinden
-    ├── FilesListView.swift        IGC/CUP listesi + paylaş/sil
-    └── ShareSheet.swift           UIActivityViewController wrapper
+└── VarioTB/
+    ├── VarioTBApp.swift               App entry + audio session setup
+    ├── Info.plist                     İzinler, background modes, ATS exception
+    ├── Assets.xcassets/               App icon
+    ├── Models/
+    │   ├── AppSettings.swift          @AppStorage ayarlar + pilot/glider
+    │   ├── PanelLayout.swift          Grid layout + card kinds + swap/placing
+    │   ├── CompetitionTask.swift      Task + turnpoint + optimal tangent + reach
+    │   ├── ThermalPoint.swift         ThermalPoint + ThermalSource(.real/.simulated)
+    │   ├── WaypointLibrary.swift      JSON waypoint persistence
+    │   └── L10n.swift                 TR/EN çeviri + LanguagePreference singleton
+    ├── Intents/
+    │   └── VarioTBIntents.swift       Siri App Intents + AppShortcutsProvider
+    ├── Managers/
+    │   ├── LocationManager.swift      GPS + CMAltimeter + simulator injection
+    │   ├── VarioManager.swift         Vario filter + termik tespit (6s streak)
+    │   ├── WindEstimator.swift        Circling-based rüzgâr (course spread >90°)
+    │   ├── FlightSimulator.swift      Task-aware simulator (cylinder entry, thermals)
+    │   ├── FAITriangleDetector.swift  O(n³) FAI triangle search, flight-start tracking
+    │   ├── IGCRecorder.swift          FAI IGC B-record / H-record yazar
+    │   ├── WaypointExporter.swift     SeeYou CUP formatı
+    │   ├── FlightRecorder.swift       IGC + waypoint koordinatör + otomatik start/stop
+    │   ├── KeychainStore.swift        Keychain wrapper (LiveTrack24 şifresi)
+    │   └── LiveTrack24Tracker.swift   Session-aware LT24 protocol client
+    ├── Audio/
+    │   └── AudioEngine.swift          AVAudioSourceNode DSP (4 harmonik, cadence)
+    ├── Utils/
+    │   ├── CoordConverter.swift       DMS/DM/UTM/MGRS dönüşümleri
+    │   └── TaskQRCodec.swift          XCTrack v1/v2/XCTSKZ polyline codec
+    └── Views/
+        ├── ContentView.swift          ZStack + panel grid + task fit observer
+        ├── PanelView.swift            Grid renderer + drag/resize + edit footer
+        ├── TopBar.swift               GPS pill + SIM + waypoints + task + share + settings
+        ├── SatelliteMapView.swift     MapKit + task overlay + FAI + recenter
+        ├── WindDial.swift             Yatay windsock + tick + N/E/S/W
+        ├── ThermalRadar.swift         Tüm termiklerin radar ekranı
+        ├── CompetitionTaskView.swift  Task editörü + QR scan/share + timing
+        ├── WaypointsView.swift        Waypoint kütüphanesi CRUD
+        ├── TurnpointEditor.swift      Tek TP edit sayfası
+        ├── TaskQRCaptureView.swift    Kamera QR tarayıcı
+        ├── SettingsView.swift         Form — tamamen L10n üzerinden
+        ├── FilesListView.swift        IGC/CUP listesi + paylaş/sil
+        └── ShareSheet.swift           UIActivityViewController wrapper
 ```
 
 ---
