@@ -174,17 +174,20 @@ struct SatelliteMapView: UIViewRepresentable {
         }()
 
         static func thermalImage(strength: Double) -> UIImage {
-            let color: UIColor = strength >= 3 ? .red
-                : strength >= 2 ? .orange
-                : strength >= 1 ? .yellow : .green
-            let size = CGSize(width: 18, height: 18)
+            // Blue gradient scale — strong cyan to deep indigo
+            let color: UIColor
+            if strength >= 3.0 { color = UIColor(red: 0.40, green: 0.90, blue: 1.00, alpha: 1) }
+            else if strength >= 2.0 { color = UIColor(red: 0.45, green: 0.70, blue: 1.00, alpha: 1) }
+            else if strength >= 1.0 { color = UIColor(red: 0.55, green: 0.60, blue: 0.95, alpha: 1) }
+            else { color = UIColor(red: 0.60, green: 0.65, blue: 0.85, alpha: 1) }
+            let size = CGSize(width: 20, height: 20)
             return UIGraphicsImageRenderer(size: size).image { ctx in
                 let c = ctx.cgContext
                 c.setFillColor(color.cgColor)
-                c.fillEllipse(in: CGRect(x: 3, y: 3, width: 12, height: 12))
+                c.fillEllipse(in: CGRect(x: 3, y: 3, width: 14, height: 14))
                 c.setStrokeColor(UIColor.white.cgColor)
-                c.setLineWidth(1.5)
-                c.strokeEllipse(in: CGRect(x: 3, y: 3, width: 12, height: 12))
+                c.setLineWidth(2)
+                c.strokeEllipse(in: CGRect(x: 3, y: 3, width: 14, height: 14))
             }
         }
     }

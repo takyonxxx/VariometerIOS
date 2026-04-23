@@ -26,6 +26,21 @@
 	<string>Uçuş sırasında arka planda da konum takibi için kullanılır.</string>
 	<key>NSMotionUsageDescription</key>
 	<string>Barometrik variometer için hareket ve basınç sensörleri kullanılır.</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSExceptionDomains</key>
+		<dict>
+			<key>livetrack24.com</key>
+			<dict>
+				<key>NSExceptionAllowsInsecureHTTPLoads</key>
+				<true/>
+				<key>NSIncludesSubdomains</key>
+				<true/>
+				<key>NSExceptionRequiresForwardSecrecy</key>
+				<false/>
+			</dict>
+		</dict>
+	</dict>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

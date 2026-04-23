@@ -3,7 +3,10 @@ import SwiftUI
 struct TopBar: View {
     @ObservedObject var locationMgr: LocationManager
     @ObservedObject var settings: AppSettings
+    @ObservedObject var simulator: FlightSimulator
+    @ObservedObject var recorder: FlightRecorder
     @Binding var showSettings: Bool
+    var onShareTap: () -> Void
 
     var body: some View {
         HStack(spacing: 10) {
@@ -31,17 +34,59 @@ struct TopBar: View {
                     .background(Circle().fill(Color.black.opacity(0.55)))
             }
 
-            // Damper pill
-            Text("Damper \(settings.damperLevel)")
-                .font(.system(size: 12, weight: .semibold, design: .rounded))
-                .foregroundColor(.white.opacity(0.85))
+            // Map toggle
+            Button {
+                settings.showMapBackground.toggle()
+            } label: {
+                Image(systemName: settings.showMapBackground ? "map.fill" : "map")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(settings.showMapBackground ? .cyan : .white.opacity(0.7))
+                    .padding(7)
+                    .background(Circle().fill(Color.black.opacity(0.55)))
+            }
+
+            // Simulation toggle (replaces old damper pill)
+            Button {
+                if simulator.isRunning {
+                    simulator.stop()
+                } else {
+                    simulator.start()
+                }
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: simulator.isRunning ? "stop.circle.fill" : "play.circle.fill")
+                        .font(.system(size: 13, weight: .bold))
+                    Text(simulator.isRunning ? "SIM" : "SIM")
+                        .font(.system(size: 11, weight: .heavy, design: .rounded))
+                }
+                .foregroundColor(simulator.isRunning ? .orange : .white.opacity(0.7))
                 .padding(.horizontal, 8).padding(.vertical, 4)
-                .background(Capsule().fill(Color.black.opacity(0.55)))
+                .background(
+                    Capsule()
+                        .fill(Color.black.opacity(0.55))
+                        .overlay(
+                            Capsule()
+                                .stroke(simulator.isRunning ? Color.orange : Color.clear, lineWidth: 1.5)
+                        )
+                )
+            }
 
             Spacer()
 
-            // Clock
-            TimeNowView()
+            // Share button — exports IGC + waypoints via iOS share sheet
+            Button {
+                onShareTap()
+            } label: {
+                Image(systemName: recorder.isRecording
+                      ? "square.and.arrow.up.fill"
+                      : "square.and.arrow.up")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundColor(recorder.isRecording
+                                     ? Color(red: 0.35, green: 0.95, blue: 0.55)
+                                     : .white)
+                    .padding(8)
+                    .background(Circle().fill(Color.black.opacity(0.55)))
+            }
 
             // Settings gear
             Button {

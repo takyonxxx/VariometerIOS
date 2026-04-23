@@ -83,4 +83,12 @@ final class WindEstimator: ObservableObject {
         let diff = ((b - a + 540).truncatingRemainder(dividingBy: 360)) - 180
         return normalizeDeg(a + diff * t)
     }
+
+    /// Clear all samples and readings. Called when simulator stops.
+    func reset() {
+        samples.removeAll()
+        windSpeedKmh = 0
+        windFromDeg = 0
+        confidence = 0
+    }
 }

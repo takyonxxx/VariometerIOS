@@ -8,8 +8,12 @@ struct ContentView: View {
     @StateObject private var wind = WindEstimator()
     @StateObject private var audio = AudioEngine()
     @StateObject private var vario: VarioManager
+    @StateObject private var simulator = FlightSimulator()
+    @StateObject private var recorder = FlightRecorder()
+    @StateObject private var liveTracker = LiveTrack24Tracker()
 
     @State private var showSettings = false
+    @State private var showFilesList = false
     @State private var updateTimer: Timer?
     @State private var autoFollow: Bool = true
 
@@ -21,101 +25,82 @@ struct ContentView: View {
 
     var body: some View {
         GeometryReader { geo in
-            ZStack {
-                if settings.showMapBackground {
-                    // Full-screen satellite map background
-                    SatelliteMapView(coordinate: locationMgr.coordinate,
-                                     heading: locationMgr.courseDeg,
-                                     thermals: vario.thermals,
-                                     autoFollow: $autoFollow)
-                        .ignoresSafeArea()
+            // When map is on: upper 55% = instruments, lower 45% = map
+            // When map is off: full screen = instruments, more breathing room
+            let mapOn = settings.showMapBackground
+            // Map ON: 60% instruments / 40% map — gives wind+thermal more room
+            // Map OFF: full screen instruments
+            let topFraction: CGFloat = mapOn ? 0.60 : 1.0
 
-                    // Dark overlay for readability over map
-                    LinearGradient(colors: [.black.opacity(0.55), .black.opacity(0.25), .black.opacity(0.55)],
-                                   startPoint: .top, endPoint: .bottom)
-                        .ignoresSafeArea()
-                        .allowsHitTesting(false)
-                } else {
-                    // Theme-based solid background (no map)
-                    LinearGradient(colors: settings.backgroundTheme.gradient,
-                                   startPoint: .top, endPoint: .bottom)
-                        .ignoresSafeArea()
-                }
+            ZStack {
+                // Solid theme background behind everything (visible when map is off)
+                LinearGradient(colors: settings.backgroundTheme.gradient,
+                               startPoint: .top, endPoint: .bottom)
+                    .ignoresSafeArea()
 
                 VStack(spacing: 0) {
-                    TopBar(locationMgr: locationMgr, settings: settings,
-                           showSettings: $showSettings)
-                        .padding(.horizontal, 12)
-                        .padding(.top, 8)
+                    // ===== UPPER SECTION (instruments) =====
+                    instrumentPanel
+                        .frame(height: geo.size.height * topFraction)
 
-                    // Main vario reading — HUGE
-                    VarioBigReadout(vario: vario.filteredVario,
-                                    avg: vario.avgVario30s)
-                        .padding(.top, 10)
+                    // ===== LOWER SECTION (map, conditional) =====
+                    if mapOn {
+                        ZStack(alignment: .bottomTrailing) {
+                            SatelliteMapView(coordinate: locationMgr.coordinate,
+                                             heading: locationMgr.courseDeg,
+                                             thermals: vario.thermals,
+                                             autoFollow: $autoFollow)
 
-                    Spacer(minLength: 0)
-
-                    // Middle row: Wind dial + Thermal radar
-                    HStack(spacing: 12) {
-                        WindDial(windFromDeg: wind.windFromDeg,
-                                 windSpeedKmh: wind.windSpeedKmh,
-                                 courseDeg: locationMgr.courseDeg,
-                                 confidence: wind.confidence)
-                            .frame(maxWidth: .infinity)
-                            .aspectRatio(1, contentMode: .fit)
-
-                        ThermalRadar(thermal: vario.lastThermal,
-                                     pilotCoord: locationMgr.coordinate,
-                                     pilotCourseDeg: locationMgr.courseDeg,
-                                     radiusM: settings.thermalMemoryRadiusM)
-                            .frame(maxWidth: .infinity)
-                            .aspectRatio(1, contentMode: .fit)
-                    }
-                    .padding(.horizontal, 12)
-
-                    Spacer(minLength: 0)
-
-                    // Bottom telemetry strip
-                    BottomTelemetry(locationMgr: locationMgr, settings: settings)
-                        .padding(.horizontal, 12)
-                        .padding(.bottom, 8)
-                }
-
-                // Re-center floating button — only when map is visible
-                // and user has panned away from auto-follow
-                if settings.showMapBackground && !autoFollow {
-                    VStack {
-                        Spacer()
-                        HStack {
-                            Spacer()
-                            Button {
-                                autoFollow = true
-                            } label: {
-                                Image(systemName: "location.north.line.fill")
-                                    .font(.system(size: 18, weight: .bold))
-                                    .foregroundColor(.white)
-                                    .padding(14)
-                                    .background(
-                                        Circle()
-                                            .fill(Color.black.opacity(0.65))
-                                            .overlay(
-                                                Circle()
-                                                    .stroke(Color.cyan.opacity(0.8), lineWidth: 2)
-                                            )
-                                    )
+                            // Re-center button floats inside the map area
+                            if !autoFollow {
+                                Button {
+                                    autoFollow = true
+                                } label: {
+                                    Image(systemName: "location.north.line.fill")
+                                        .font(.system(size: 18, weight: .bold))
+                                        .foregroundColor(.white)
+                                        .padding(14)
+                                        .background(
+                                            Circle()
+                                                .fill(Color.black.opacity(0.65))
+                                                .overlay(
+                                                    Circle()
+                                                        .stroke(Color.cyan.opacity(0.8), lineWidth: 2)
+                                                )
+                                        )
+                                }
+                                .padding(14)
+                                .transition(.opacity.combined(with: .scale))
                             }
-                            .padding(.trailing, 18)
-                            .padding(.bottom, 180)   // above bottom telemetry
+
+                            // Thin border/shadow between instruments and map
+                            VStack { Spacer() }   // just for alignment
+                        }
+                        .overlay(alignment: .top) {
+                            // Subtle top divider line so instruments/map feel like panes
+                            Rectangle()
+                                .fill(Color.white.opacity(0.15))
+                                .frame(height: 1)
                         }
                     }
-                    .transition(.opacity.combined(with: .scale))
                 }
             }
+            .animation(.easeInOut(duration: 0.25), value: mapOn)
             .animation(.easeInOut(duration: 0.2), value: autoFollow)
         }
         .onAppear {
             locationMgr.start()
             vario.attachLocationManager(locationMgr)
+            simulator.attach(locationManager: locationMgr,
+                             varioManager: vario,
+                             windEstimator: wind)
+            recorder.attach(locationManager: locationMgr,
+                            varioManager: vario,
+                            simulator: simulator,
+                            settings: settings)
+            liveTracker.attach(settings: settings, locationManager: locationMgr)
+            // Start live tracking if user had it enabled
+            if settings.liveTrackEnabled { liveTracker.start() }
             applyAudioSettings()
             startTick()
         }
@@ -127,9 +112,99 @@ struct ContentView: View {
         .onChange(of: settings.basePitchHz)     { _ in applyAudioSettings() }
         .onChange(of: settings.maxPitchHz)      { _ in applyAudioSettings() }
         .sheet(isPresented: $showSettings) {
-            SettingsView(settings: settings, audio: audio)
+            SettingsView(settings: settings, audio: audio, liveTracker: liveTracker)
+        }
+        .sheet(isPresented: $showFilesList) {
+            FilesListView(recorder: recorder, isPresented: $showFilesList)
         }
     }
+
+    /// Called when share button is tapped. Exports fresh waypoints and
+    /// opens the files list so user can review, delete, or share.
+    private func prepareAndShowShare() {
+        _ = recorder.exportCurrentThermalsAsWaypoints()
+        showFilesList = true
+    }
+
+    // MARK: - Instrument panel (everything except the map)
+
+    @ViewBuilder
+    private var instrumentPanel: some View {
+        VStack(spacing: 0) {
+            TopBar(locationMgr: locationMgr, settings: settings,
+                   simulator: simulator,
+                   recorder: recorder,
+                   showSettings: $showSettings,
+                   onShareTap: { prepareAndShowShare() })
+                .padding(.horizontal, 12)
+                .padding(.top, 8)
+
+            // Main vario reading — compact on map-on, full size on map-off
+            VarioBigReadout(vario: vario.filteredVario,
+                            compact: settings.showMapBackground)
+                .padding(.top, settings.showMapBackground ? 2 : 12)
+
+            if !settings.showMapBackground {
+                Spacer(minLength: 0)
+            }
+
+            // Telemetry strip (ALT / SPEED / COURSE + coords)
+            BottomTelemetry(locationMgr: locationMgr, settings: settings)
+                .padding(.horizontal, 12)
+                .padding(.top, settings.showMapBackground ? 6 : 0)
+                .padding(.bottom, settings.showMapBackground ? 8 : 18)
+
+            // Wind + Thermal indicators
+            if settings.showMapBackground {
+                // Map ON: horizontal layout, fills available space
+                HStack(spacing: 12) {
+                    WindDial(windFromDeg: wind.windFromDeg,
+                             windSpeedKmh: wind.windSpeedKmh,
+                             courseDeg: locationMgr.courseDeg,
+                             confidence: wind.confidence)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .aspectRatio(1, contentMode: .fit)
+
+                    ThermalRadar(thermals: vario.thermals,
+                                 pilotCoord: locationMgr.coordinate,
+                                 pilotCourseDeg: locationMgr.courseDeg,
+                                 radiusM: settings.thermalMemoryRadiusM)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .aspectRatio(1, contentMode: .fit)
+                }
+                .padding(.horizontal, 12)
+                .padding(.bottom, 6)
+            } else {
+                // Map OFF: vertical stack — wind on top, thermal below (2x size)
+                VStack(spacing: 12) {
+                    WindDial(windFromDeg: wind.windFromDeg,
+                             windSpeedKmh: wind.windSpeedKmh,
+                             courseDeg: locationMgr.courseDeg,
+                             confidence: wind.confidence)
+                        .frame(maxWidth: .infinity)
+                        .aspectRatio(1, contentMode: .fit)
+                        .frame(maxWidth: 170)
+
+                    ThermalRadar(thermals: vario.thermals,
+                                 pilotCoord: locationMgr.coordinate,
+                                 pilotCourseDeg: locationMgr.courseDeg,
+                                 radiusM: settings.thermalMemoryRadiusM)
+                        .frame(maxWidth: .infinity)
+                        .aspectRatio(1, contentMode: .fit)
+                        .frame(maxWidth: 340)
+                }
+                .padding(.horizontal, 12)
+                .padding(.bottom, 8)
+            }
+
+            // Bottom status bar — big clock + battery, always at the bottom
+            BottomStatusBar()
+                .padding(.horizontal, 12)
+                .padding(.bottom, 6)
+        }
+    }
+
+    // MARK: - Audio wiring
 
     private func applyAudioSettings() {
         audio.updateSettings(enabled: settings.soundEnabled,
@@ -144,12 +219,29 @@ struct ContentView: View {
     private func startTick() {
         updateTimer?.invalidate()
         updateTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { _ in
-            vario.update(rawVerticalSpeed: locationMgr.verticalSpeed,
-                         coordinate: locationMgr.coordinate,
-                         altitude: locationMgr.fusedAltitude)
+            // When simulator is running, it pushes vario updates directly — skip double work.
+            if !simulator.isRunning {
+                vario.update(rawVerticalSpeed: locationMgr.verticalSpeed,
+                             coordinate: locationMgr.coordinate,
+                             altitude: locationMgr.fusedAltitude)
+            }
             wind.update(groundSpeedKmh: locationMgr.groundSpeedKmh,
                         courseDeg: locationMgr.courseDeg)
             audio.updateVario(vario.filteredVario)
+
+            // Feed live tracker (samples at full tick rate; uploads batched @ 30s)
+            liveTracker.recordFix()
+
+            // Auto-start real flight recording when:
+            //   - simulator is NOT running
+            //   - we have a GPS fix
+            //   - the user is moving (>5 km/h) or climbing (>1 m/s)
+            if !simulator.isRunning,
+               !recorder.isRecording,
+               locationMgr.hasFix,
+               (locationMgr.groundSpeedKmh > 5 || vario.filteredVario > 1) {
+                recorder.startFlight()
+            }
         }
     }
 }

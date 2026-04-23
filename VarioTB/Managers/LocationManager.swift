@@ -26,6 +26,9 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
     private var windowSec: Double = 0.25   // default; VarioManager will override
     private var baroBaselineSet = false
 
+    /// When true, all real GPS / barometer data is ignored. Used by FlightSimulator.
+    var simulatedMode: Bool = false
+
     override init() {
         super.init()
         manager.delegate = self
@@ -50,6 +53,7 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
             guard let self = self, let data = data else { return }
             let relAlt = data.relativeAltitude.doubleValue
             DispatchQueue.main.async {
+                guard !self.simulatedMode else { return }
                 self.baroAltitude = relAlt
                 self.computeVerticalSpeed()
                 self.updateFusedAltitude()
@@ -121,6 +125,7 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
     }
 
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+        guard !simulatedMode else { return }
         guard let loc = locations.last else { return }
         coordinate = loc.coordinate
         gpsAltitude = loc.altitude
@@ -132,6 +137,7 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
     }
 
     func locationManager(_ manager: CLLocationManager, didUpdateHeading newHeading: CLHeading) {
+        guard !simulatedMode else { return }
         if newHeading.trueHeading >= 0 {
             headingDeg = newHeading.trueHeading
         } else {
@@ -141,5 +147,42 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
 
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
         // Ignore; transient
+    }
+
+    /// Called by FlightSimulator to push simulated values into the normal flow.
+    func injectSimulatedData(coordinate: CLLocationCoordinate2D,
+                             altitude: Double,
+                             groundSpeedKmh: Double,
+                             courseDeg: Double,
+                             headingDeg: Double,
+                             verticalSpeed: Double) {
+        self.coordinate = coordinate
+        self.gpsAltitude = altitude
+        self.baroAltitude = altitude
+        self.fusedAltitude = altitude
+        self.groundSpeedKmh = groundSpeedKmh
+        self.courseDeg = courseDeg
+        self.headingDeg = headingDeg
+        self.verticalSpeed = verticalSpeed
+        self.horizontalAccuracy = 3.0
+        self.hasFix = true
+    }
+
+    /// Simulator stopped — reset to "no data" state so the screen clearly shows
+    /// the app is waiting for real sensor/GPS values (which will populate again
+    /// as real updates arrive).
+    func resetForSimulatorStop() {
+        coordinate = nil
+        gpsAltitude = 0
+        baroAltitude = 0
+        fusedAltitude = 0
+        groundSpeedKmh = 0
+        courseDeg = 0
+        verticalSpeed = 0
+        horizontalAccuracy = -1
+        hasFix = false
+        // Clear altitude window so vario regression starts fresh
+        altWindow.removeAll()
+        lastAltitudeSample = nil
     }
 }

@@ -18,6 +18,16 @@
 		674EC86C245244AFA6B27E90 /* CoordConverter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 199930F8C7C54E6F8F9B8481 /* CoordConverter.swift */; };
 		68456593A5924BB081008258 /* AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0570925BD1314D3EA5CF2890 /* AppSettings.swift */; };
 		7F77EB612C6F48C38C7237EA /* AudioEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7452A3AE96041149D0594F7 /* AudioEngine.swift */; };
+		9CD0604E2F9A1ED9009415D7 /* FlightSimulator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CD0604D2F9A1ED9009415D7 /* FlightSimulator.swift */; };
+		9CD060522F9A2E47009415D7 /* IGCRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CD060502F9A2E47009415D7 /* IGCRecorder.swift */; };
+		9CD060532F9A2E47009415D7 /* WaypointExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CD060512F9A2E47009415D7 /* WaypointExporter.swift */; };
+		9CD060542F9A2E47009415D7 /* FlightRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CD0604F2F9A2E47009415D7 /* FlightRecorder.swift */; };
+		9CD060572F9A2E61009415D7 /* ShareSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CD060562F9A2E61009415D7 /* ShareSheet.swift */; };
+		9CD060582F9A2E61009415D7 /* BottomStatusBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CD060552F9A2E61009415D7 /* BottomStatusBar.swift */; };
+		9CD0605A2F9A3138009415D7 /* FilesListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CD060592F9A3138009415D7 /* FilesListView.swift */; };
+		9CD0605C2F9A35E1009415D7 /* L10n.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CD0605B2F9A35E1009415D7 /* L10n.swift */; };
+		9CD0605F2F9A393A009415D7 /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CD0605D2F9A393A009415D7 /* KeychainStore.swift */; };
+		9CD060622F9A3C60009415D7 /* LiveTrack24Tracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CD060612F9A3C60009415D7 /* LiveTrack24Tracker.swift */; };
 		A57A19276CF24812AAA0D7F5 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B97BD02093D4C76B69E368E /* ContentView.swift */; };
 		A5F1E832842F42BF9282FB27 /* ThermalPoint.swift in Sources */ = {isa = PBXBuildFile; fileRef = C89C3399EA334BE487E34303 /* ThermalPoint.swift */; };
 		CEA3618647D442AE9CB06FC3 /* VarioTBApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A60227196C314AA08FD9832A /* VarioTBApp.swift */; };
@@ -39,6 +49,16 @@
 		87D48A2226F54B92B5269508 /* LocationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationManager.swift; sourceTree = "<group>"; };
 		87ECC1D80DC5415D96025E75 /* BottomTelemetry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BottomTelemetry.swift; sourceTree = "<group>"; };
 		8DD2A853C992464DAB2D6A8C /* WindEstimator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindEstimator.swift; sourceTree = "<group>"; };
+		9CD0604D2F9A1ED9009415D7 /* FlightSimulator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlightSimulator.swift; sourceTree = "<group>"; };
+		9CD0604F2F9A2E47009415D7 /* FlightRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlightRecorder.swift; sourceTree = "<group>"; };
+		9CD060502F9A2E47009415D7 /* IGCRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IGCRecorder.swift; sourceTree = "<group>"; };
+		9CD060512F9A2E47009415D7 /* WaypointExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WaypointExporter.swift; sourceTree = "<group>"; };
+		9CD060552F9A2E61009415D7 /* BottomStatusBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BottomStatusBar.swift; sourceTree = "<group>"; };
+		9CD060562F9A2E61009415D7 /* ShareSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareSheet.swift; sourceTree = "<group>"; };
+		9CD060592F9A3138009415D7 /* FilesListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilesListView.swift; sourceTree = "<group>"; };
+		9CD0605B2F9A35E1009415D7 /* L10n.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = L10n.swift; sourceTree = "<group>"; };
+		9CD0605D2F9A393A009415D7 /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
+		9CD060612F9A3C60009415D7 /* LiveTrack24Tracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveTrack24Tracker.swift; sourceTree = "<group>"; };
 		A60227196C314AA08FD9832A /* VarioTBApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VarioTBApp.swift; sourceTree = "<group>"; };
 		C7452A3AE96041149D0594F7 /* AudioEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioEngine.swift; sourceTree = "<group>"; };
 		C89C3399EA334BE487E34303 /* ThermalPoint.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThermalPoint.swift; sourceTree = "<group>"; };
@@ -78,6 +98,12 @@
 		2D8C263AFCD1453387D5A0DB /* Managers */ = {
 			isa = PBXGroup;
 			children = (
+				9CD060612F9A3C60009415D7 /* LiveTrack24Tracker.swift */,
+				9CD0605D2F9A393A009415D7 /* KeychainStore.swift */,
+				9CD0604F2F9A2E47009415D7 /* FlightRecorder.swift */,
+				9CD060502F9A2E47009415D7 /* IGCRecorder.swift */,
+				9CD060512F9A2E47009415D7 /* WaypointExporter.swift */,
+				9CD0604D2F9A1ED9009415D7 /* FlightSimulator.swift */,
 				87D48A2226F54B92B5269508 /* LocationManager.swift */,
 				6C19F76ABFD647778A8340CA /* VarioManager.swift */,
 				8DD2A853C992464DAB2D6A8C /* WindEstimator.swift */,
@@ -111,6 +137,9 @@
 		F0EFA735BFEA42B19A07D83A /* Views */ = {
 			isa = PBXGroup;
 			children = (
+				9CD060592F9A3138009415D7 /* FilesListView.swift */,
+				9CD060552F9A2E61009415D7 /* BottomStatusBar.swift */,
+				9CD060562F9A2E61009415D7 /* ShareSheet.swift */,
 				1B97BD02093D4C76B69E368E /* ContentView.swift */,
 				4D5DE11B1E4E4A38B7EABC59 /* VarioBigReadout.swift */,
 				1FE22F64ACD34E6BA00C2198 /* WindDial.swift */,
@@ -134,6 +163,7 @@
 		F7E5062DBFD947379D8411CC /* Models */ = {
 			isa = PBXGroup;
 			children = (
+				9CD0605B2F9A35E1009415D7 /* L10n.swift */,
 				0570925BD1314D3EA5CF2890 /* AppSettings.swift */,
 				C89C3399EA334BE487E34303 /* ThermalPoint.swift */,
 			);
@@ -212,17 +242,27 @@
 				CEA3618647D442AE9CB06FC3 /* VarioTBApp.swift in Sources */,
 				68456593A5924BB081008258 /* AppSettings.swift in Sources */,
 				A5F1E832842F42BF9282FB27 /* ThermalPoint.swift in Sources */,
+				9CD060522F9A2E47009415D7 /* IGCRecorder.swift in Sources */,
+				9CD060532F9A2E47009415D7 /* WaypointExporter.swift in Sources */,
+				9CD060542F9A2E47009415D7 /* FlightRecorder.swift in Sources */,
 				08DE59D99EEC450AB4987449 /* LocationManager.swift in Sources */,
 				4F46C6C3F19240A99176A0E4 /* VarioManager.swift in Sources */,
+				9CD0605C2F9A35E1009415D7 /* L10n.swift in Sources */,
 				4B2D9AABADA544F298009B59 /* WindEstimator.swift in Sources */,
 				7F77EB612C6F48C38C7237EA /* AudioEngine.swift in Sources */,
 				674EC86C245244AFA6B27E90 /* CoordConverter.swift in Sources */,
 				A57A19276CF24812AAA0D7F5 /* ContentView.swift in Sources */,
+				9CD0605F2F9A393A009415D7 /* KeychainStore.swift in Sources */,
 				452318BA8DBC4984A88046BB /* VarioBigReadout.swift in Sources */,
 				3940B39A1D0744EE85BE9936 /* WindDial.swift in Sources */,
 				FC4AE83DF7A648648EC1F4BE /* ThermalRadar.swift in Sources */,
+				9CD060572F9A2E61009415D7 /* ShareSheet.swift in Sources */,
+				9CD0605A2F9A3138009415D7 /* FilesListView.swift in Sources */,
+				9CD060582F9A2E61009415D7 /* BottomStatusBar.swift in Sources */,
 				341EDE42433143F5BDBED298 /* SatelliteMapView.swift in Sources */,
 				3BD9B62375B84DEEA42310FF /* TopBar.swift in Sources */,
+				9CD060622F9A3C60009415D7 /* LiveTrack24Tracker.swift in Sources */,
+				9CD0604E2F9A1ED9009415D7 /* FlightSimulator.swift in Sources */,
 				5021DC368A924488B78B4211 /* BottomTelemetry.swift in Sources */,
 				FB53A880A31D4EA68A9E29E6 /* SettingsView.swift in Sources */,
 			);

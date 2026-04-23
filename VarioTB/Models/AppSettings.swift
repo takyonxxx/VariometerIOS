@@ -53,22 +53,58 @@ enum BackgroundTheme: String, CaseIterable, Identifiable {
     }
 }
 
+enum GliderCertification: String, CaseIterable, Identifiable {
+    case none  = "-"
+    case enA   = "EN A"
+    case enB   = "EN B"
+    case enC   = "EN C"
+    case enD   = "EN D"
+    case cccc  = "CCC"
+    var id: String { rawValue }
+}
+
+enum GliderType: String, CaseIterable, Identifiable {
+    case paraglider = "Paraglider"
+    case hangGlider = "Hang Glider"
+    case glider     = "Glider / Planör"
+    case paramotor  = "Paramotor"
+    var id: String { rawValue }
+}
+
 final class AppSettings: ObservableObject {
-    @AppStorage("damperLevel")        var damperLevel: Int = 3          // 1..10
+    // Damper is now fixed at 1 (bypass) — removed from UI per design.
+    // Regression window handles smoothing.
+    var damperLevel: Int { 1 }
+
     @AppStorage("soundEnabled")       var soundEnabled: Bool = true
     @AppStorage("soundVolume")        var soundVolume: Double = 0.8
     @AppStorage("soundMode")          var soundModeRaw: String = SoundMode.procedural.rawValue
-    @AppStorage("climbThreshold")     var climbThreshold: Double = 0.1   // m/s above = beep
-    @AppStorage("sinkThreshold")      var sinkThreshold: Double = -2.0   // m/s below = alarm
-    @AppStorage("basePitchHz")        var basePitchHz: Double = 500      // Hz at climb threshold
-    @AppStorage("maxPitchHz")         var maxPitchHz: Double = 1600      // Hz at max climb (+6 m/s)
+    @AppStorage("climbThreshold")     var climbThreshold: Double = 0.1
+    @AppStorage("sinkThreshold")      var sinkThreshold: Double = -2.0
+    @AppStorage("basePitchHz")        var basePitchHz: Double = 500
+    @AppStorage("maxPitchHz")         var maxPitchHz: Double = 1600
     @AppStorage("coordFormat")        var coordFormatRaw: String = CoordinateFormat.decimal.rawValue
     @AppStorage("useBarometer")       var useBarometer: Bool = true
     @AppStorage("thermalMemoryRadiusM") var thermalMemoryRadiusM: Double = 1500
 
     // Map & background
     @AppStorage("showMapBackground")  var showMapBackground: Bool = false
-    @AppStorage("backgroundTheme")    var backgroundThemeRaw: String = BackgroundTheme.instrumentNavy.rawValue
+    @AppStorage("backgroundTheme")    var backgroundThemeRaw: String = BackgroundTheme.nightAviation.rawValue
+
+    // Pilot info (used in IGC header and live-tracking)
+    @AppStorage("pilotFirstName")     var pilotFirstName: String = ""
+    @AppStorage("pilotLastName")      var pilotLastName: String = ""
+    @AppStorage("gliderBrandModel")   var gliderBrandModel: String = ""
+    @AppStorage("gliderCertification") var gliderCertificationRaw: String = GliderCertification.none.rawValue
+    @AppStorage("gliderType")          var gliderTypeRaw: String = GliderType.paraglider.rawValue
+
+    // LiveTrack24 live tracking
+    // Keep old @AppStorage key names ("xcontestUsername" etc.) so existing
+    // installs don't lose saved credentials on upgrade. The values are
+    // used as LiveTrack24 credentials now.
+    @AppStorage("xcontestUsername")   var liveTrackUsername: String = ""
+    @AppStorage("xcontestLiveEnabled") var liveTrackEnabled: Bool = false
+    // Password is stored in Keychain (not AppStorage), see KeychainStore.
 
     var soundMode: SoundMode {
         get { SoundMode(rawValue: soundModeRaw) ?? .procedural }
@@ -81,5 +117,19 @@ final class AppSettings: ObservableObject {
     var backgroundTheme: BackgroundTheme {
         get { BackgroundTheme(rawValue: backgroundThemeRaw) ?? .instrumentNavy }
         set { backgroundThemeRaw = newValue.rawValue }
+    }
+    var gliderCertification: GliderCertification {
+        get { GliderCertification(rawValue: gliderCertificationRaw) ?? .none }
+        set { gliderCertificationRaw = newValue.rawValue }
+    }
+    var gliderType: GliderType {
+        get { GliderType(rawValue: gliderTypeRaw) ?? .paraglider }
+        set { gliderTypeRaw = newValue.rawValue }
+    }
+
+    /// Convenience: full pilot name for IGC headers.
+    var pilotFullName: String {
+        let combined = "\(pilotFirstName) \(pilotLastName)".trimmingCharacters(in: .whitespaces)
+        return combined.isEmpty ? "tbiliyor" : combined
     }
 }

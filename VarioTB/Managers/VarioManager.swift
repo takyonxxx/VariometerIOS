@@ -85,6 +85,11 @@ final class VarioManager: ObservableObject {
     }
 
     private func detectThermal(coordinate: CLLocationCoordinate2D?, altitude: Double) {
+        // If simulator is running, don't create real-detected thermals — the
+        // simulator is driving the vertical speed and will place its own
+        // simulated thermals explicitly.
+        if locationMgr?.simulatedMode == true { return }
+
         let climbing = filteredVario >= 0.5
         if climbing {
             if climbStreakStart == nil {
@@ -125,6 +130,19 @@ final class VarioManager: ObservableObject {
         thermals.removeAll()
         lastThermal = nil
         rawSamples.removeAll()
+    }
+
+    /// Called when simulator stops — reset live vario readings (but NOT the
+    /// thermal list; that's managed by the simulator itself which keeps
+    /// real-flight thermals and removes simulated ones).
+    func resetLive() {
+        filteredVario = 0
+        avgVario30s = 0
+        rawSamples.removeAll()
+        // reset thermal detection state
+        climbStreakStart = nil
+        climbStreakSum = 0
+        climbStreakCount = 0
     }
 }
 
