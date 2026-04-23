@@ -28,6 +28,10 @@ enum L10n {
             "files":            "Dosyalar",
             "files_empty":      "Henüz uçuş kaydı yok.",
             "share_all":        "Hepsini Paylaş",
+            "delete_all":       "Hepsini Sil",
+            "delete_all_confirm": "Tüm dosyalar silinsin mi?",
+            "delete_all_message": "%d dosya kalıcı olarak silinecek.",
+            "cancel":           "İptal",
 
             // Telemetry
             "waiting_gps":      "GPS bekleniyor…",
@@ -104,6 +108,11 @@ enum L10n {
             "about":            "Hakkında",
             "version":          "Sürüm",
             "about_text":       "Yamaç paraşütü / planör için variometer, termik radar, rüzgâr yönü ve GPS göstergesi.",
+
+            // FAI triangle HUD
+            "fai_triangle":     "FAI Üçgeni",
+            "fai_closed":       "Kapalı üçgen",
+            "fai_closing":      "Kapatma",
         ],
         "en": [
             // Top bar / navigation
@@ -113,6 +122,10 @@ enum L10n {
             "files":            "Files",
             "files_empty":      "No flight records yet.",
             "share_all":        "Share All",
+            "delete_all":       "Delete All",
+            "delete_all_confirm": "Delete all files?",
+            "delete_all_message": "%d files will be permanently deleted.",
+            "cancel":           "Cancel",
 
             // Telemetry
             "waiting_gps":      "Waiting for GPS…",
@@ -189,6 +202,11 @@ enum L10n {
             "about":            "About",
             "version":          "Version",
             "about_text":       "Variometer, thermal radar, wind direction and GPS indicator for paragliding / gliding.",
+
+            // FAI triangle HUD
+            "fai_triangle":     "FAI Triangle",
+            "fai_closed":       "Closed triangle",
+            "fai_closing":      "Closing",
         ],
     ]
 }

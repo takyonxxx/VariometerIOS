@@ -27,6 +27,8 @@ import Combine
 ///   8  = Glider (sailplane)
 ///  16  = Paramotor
 final class LiveTrack24Tracker: ObservableObject {
+    static weak var shared: LiveTrack24Tracker?
+
     @Published var isActive: Bool = false
     @Published var lastUploadAt: Date?
     @Published var lastUploadStatus: String = ""
@@ -58,6 +60,7 @@ final class LiveTrack24Tracker: ObservableObject {
     func attach(settings: AppSettings, locationManager: LocationManager) {
         self.settings = settings
         self.locationMgr = locationManager
+        LiveTrack24Tracker.shared = self
     }
 
     // MARK: - Public lifecycle

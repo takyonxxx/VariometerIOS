@@ -11,11 +11,15 @@ struct ContentView: View {
     @StateObject private var simulator = FlightSimulator()
     @StateObject private var recorder = FlightRecorder()
     @StateObject private var liveTracker = LiveTrack24Tracker()
+    @StateObject private var fai = FAITriangleDetector()
 
     @State private var showSettings = false
     @State private var showFilesList = false
     @State private var updateTimer: Timer?
     @State private var autoFollow: Bool = true
+    /// Bumped whenever the user taps the FAI HUD — triggers the map to
+    /// zoom out and fit the whole triangle.
+    @State private var fitTriangleToken: UUID?
 
     init() {
         let s = AppSettings()
@@ -49,7 +53,34 @@ struct ContentView: View {
                             SatelliteMapView(coordinate: locationMgr.coordinate,
                                              heading: locationMgr.courseDeg,
                                              thermals: vario.thermals,
+                                             triangle: fai.bestTriangle,
+                                             flightStart: fai.flightStart,
+                                             fitTriangleToken: fitTriangleToken,
                                              autoFollow: $autoFollow)
+
+                            // FAI triangle HUD — only shown when a valid
+                            // triangle exists. Placed top-leading so it
+                            // doesn't overlap the re-center button.
+                            // Tapping the HUD disables auto-follow and
+                            // zooms the map to show the whole triangle.
+                            if let tri = fai.bestTriangle {
+                                VStack {
+                                    HStack {
+                                        FAITriangleHUD(triangle: tri,
+                                                       pilotCoord: locationMgr.coordinate,
+                                                       homeCoord: fai.flightStart,
+                                                       pilotHeadingDeg: locationMgr.courseDeg,
+                                                       onTap: {
+                                                           autoFollow = false
+                                                           fitTriangleToken = UUID()
+                                                       })
+                                            .padding(.leading, 12)
+                                            .padding(.top, 12)
+                                        Spacer()
+                                    }
+                                    Spacer()
+                                }
+                            }
 
                             // Re-center button floats inside the map area
                             if !autoFollow {
@@ -99,10 +130,22 @@ struct ContentView: View {
                             simulator: simulator,
                             settings: settings)
             liveTracker.attach(settings: settings, locationManager: locationMgr)
-            // Start live tracking if user had it enabled
+            fai.attach(locationManager: locationMgr)
             if settings.liveTrackEnabled { liveTracker.start() }
             applyAudioSettings()
             startTick()
+        }
+        .onChange(of: recorder.isRecording) { recording in
+            // FAI triangle detector follows the recorder lifecycle
+            if recording { fai.start() } else { fai.stop() }
+        }
+        .onChange(of: recorder.currentIGCURL) { _ in
+            // Every new IGC file = new flight → reset the FAI detector so
+            // stale flightStart/triangle from the previous flight doesn't
+            // leak into the new one (e.g. real→sim switch, or sim restart).
+            if recorder.isRecording {
+                fai.start()
+            }
         }
         .onChange(of: settings.soundEnabled)    { _ in applyAudioSettings() }
         .onChange(of: settings.soundVolume)     { _ in applyAudioSettings() }
@@ -219,18 +262,23 @@ struct ContentView: View {
     private func startTick() {
         updateTimer?.invalidate()
         updateTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { _ in
-            // When simulator is running, it pushes vario updates directly — skip double work.
-            if !simulator.isRunning {
-                vario.update(rawVerticalSpeed: locationMgr.verticalSpeed,
-                             coordinate: locationMgr.coordinate,
-                             altitude: locationMgr.fusedAltitude)
-            }
+            // Always drive vario from locationMgr.verticalSpeed. When the
+            // simulator is running, it pushes its vertical speed through
+            // locationMgr.injectSimulatedData, so the same path works for
+            // both real and simulated flight. VarioManager itself skips
+            // real-thermal detection when simulatedMode is on.
+            vario.update(rawVerticalSpeed: locationMgr.verticalSpeed,
+                         coordinate: locationMgr.coordinate,
+                         altitude: locationMgr.fusedAltitude)
             wind.update(groundSpeedKmh: locationMgr.groundSpeedKmh,
                         courseDeg: locationMgr.courseDeg)
             audio.updateVario(vario.filteredVario)
 
             // Feed live tracker (samples at full tick rate; uploads batched @ 30s)
             liveTracker.recordFix()
+
+            // Feed FAI triangle detector (thinned internally, recomputed every 10s)
+            fai.recordFix()
 
             // Auto-start real flight recording when:
             //   - simulator is NOT running

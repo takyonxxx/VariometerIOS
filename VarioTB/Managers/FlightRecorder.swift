@@ -12,6 +12,12 @@ import UIKit
 ///
 /// Files land in Documents/Flights/*.igc and Documents/Waypoints/*.cup .
 final class FlightRecorder: ObservableObject {
+    /// Shared instance accessible from App Intents (Siri shortcuts,
+    /// Shortcuts app, interactive widgets). ContentView still uses its own
+    /// `@StateObject` and assigns `FlightRecorder.shared = self` in attach()
+    /// so both paths see the same object.
+    static weak var shared: FlightRecorder?
+
     @Published var isRecording: Bool = false
     @Published var currentIGCURL: URL?
     @Published var lastExportedWaypointURL: URL?
@@ -36,6 +42,9 @@ final class FlightRecorder: ObservableObject {
         self.varioMgr = varioManager
         self.simulator = simulator
         self.settings = settings
+
+        // Expose this instance to App Intents
+        FlightRecorder.shared = self
 
         // Observe simulator isRunning changes — start/stop recording accordingly
         simulator.$isRunning

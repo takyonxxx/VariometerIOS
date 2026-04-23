@@ -1,13 +1,13 @@
 import SwiftUI
 
 /// Always-visible bottom bar showing the current time and battery level
-/// in large, pilot-readable fonts. Battery updates every 30 seconds.
+/// in large, pilot-readable fonts. The clock is driven by `TimelineView`
+/// at one-second cadence so it updates reliably regardless of parent
+/// re-render behavior. Battery polls every 30 seconds.
 struct BottomStatusBar: View {
-    @State private var now = Date()
     @State private var batteryLevel: Float = UIDevice.current.batteryLevel
     @State private var batteryState: UIDevice.BatteryState = UIDevice.current.batteryState
 
-    private let timeTimer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
     private let batteryTimer = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
 
     var batteryPercent: Int {
@@ -34,17 +34,31 @@ struct BottomStatusBar: View {
         return "battery.0"
     }
 
+    /// Format a Date as HH:mm:ss using Calendar components (locale-neutral).
+    private func timeString(for date: Date) -> String {
+        let cal = Calendar.current
+        let h = cal.component(.hour, from: date)
+        let m = cal.component(.minute, from: date)
+        let s = cal.component(.second, from: date)
+        return String(format: "%02d:%02d:%02d", h, m, s)
+    }
+
     var body: some View {
         HStack(spacing: 0) {
-            // Clock — big, pilot readable
+            // Clock — driven by TimelineView so SwiftUI manages the ticking.
+            // The `context.date` SwiftUI passes in changes every second, which
+            // invalidates just this subtree — independent of how many times
+            // the parent re-renders per tick.
             HStack(spacing: 6) {
                 Image(systemName: "clock.fill")
                     .font(.system(size: 16, weight: .bold))
                     .foregroundColor(.white.opacity(0.7))
-                Text(now, style: .time)
-                    .font(.system(size: 28, weight: .heavy, design: .rounded))
-                    .foregroundColor(.white)
-                    .monospacedDigit()
+                TimelineView(.periodic(from: .now, by: 1)) { context in
+                    Text(timeString(for: context.date))
+                        .font(.system(size: 26, weight: .heavy, design: .rounded))
+                        .foregroundColor(.white)
+                        .monospacedDigit()
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -74,7 +88,6 @@ struct BottomStatusBar: View {
             batteryLevel = UIDevice.current.batteryLevel
             batteryState = UIDevice.current.batteryState
         }
-        .onReceive(timeTimer) { now = $0 }
         .onReceive(batteryTimer) { _ in
             batteryLevel = UIDevice.current.batteryLevel
             batteryState = UIDevice.current.batteryState

@@ -17,6 +17,7 @@ struct FilesListView: View {
 
     @State private var files: [URL] = []
     @State private var shareItems: ShareItems? = nil
+    @State private var showDeleteAllConfirm: Bool = false
 
     var body: some View {
         let _ = language.code   // re-render on language change
@@ -33,6 +34,13 @@ struct FilesListView: View {
                             shareItems = ShareItems(urls: files)
                         } label: {
                             Label(L10n.string("share_all"), systemImage: "square.and.arrow.up")
+                                .fontWeight(.semibold)
+                        }
+
+                        Button(role: .destructive) {
+                            showDeleteAllConfirm = true
+                        } label: {
+                            Label(L10n.string("delete_all"), systemImage: "trash")
                                 .fontWeight(.semibold)
                         }
                     }
@@ -64,11 +72,28 @@ struct FilesListView: View {
             .sheet(item: $shareItems) { items in
                 ShareSheet(items: items.urls)
             }
+            .confirmationDialog(L10n.string("delete_all_confirm"),
+                                isPresented: $showDeleteAllConfirm,
+                                titleVisibility: .visible) {
+                Button(L10n.string("delete_all"), role: .destructive) {
+                    deleteAll()
+                }
+                Button(L10n.string("cancel"), role: .cancel) { }
+            } message: {
+                Text(String(format: L10n.string("delete_all_message"), files.count))
+            }
         }
     }
 
     private func reload() {
         files = recorder.listStoredFiles()
+    }
+
+    private func deleteAll() {
+        for url in files {
+            recorder.deleteFile(url)
+        }
+        reload()
     }
 }
 

@@ -9,6 +9,13 @@ struct ThermalRadar: View {
     let pilotCourseDeg: Double
     let radiusM: Double
 
+    /// Count of thermals within the current radar range. Used to show the
+    /// "out of range" label when thermals exist but none are visible.
+    private var inRangeCount: Int {
+        guard let p = pilotCoord else { return 0 }
+        return thermals.filter { distance(pilot: p, thermal: $0.coordinate) <= radiusM }.count
+    }
+
     var body: some View {
         GeometryReader { geo in
             let size = min(geo.size.width, geo.size.height)
@@ -47,22 +54,33 @@ struct ThermalRadar: View {
                     .offset(y: -10)
                     .rotationEffect(.degrees(pilotCourseDeg))
 
-                // ALL thermals
+                // Thermals WITHIN RANGE only. The radar's coverage (radiusM)
+                // comes from settings; thermals farther than that are hidden
+                // so the radar stays meaningful — the pilot sees only
+                // thermals they could realistically fly to. (The map still
+                // shows every detected thermal regardless of range.)
                 if let pilot = pilotCoord {
-                    ForEach(Array(thermals.enumerated()), id: \.element.id) { idx, t in
+                    let inRange = thermals.filter { t in
+                        distance(pilot: pilot, thermal: t.coordinate) <= radiusM
+                    }
+                    ForEach(Array(inRange.enumerated()), id: \.element.id) { idx, t in
                         ThermalMark(
                             offset: relativePosition(pilot: pilot, thermal: t, radius: r),
                             strength: t.strength,
                             distanceM: distance(pilot: pilot, thermal: t.coordinate),
-                            isLatest: idx == thermals.count - 1
+                            isLatest: idx == inRange.count - 1
                         )
                     }
                 }
 
-                if thermals.isEmpty {
+                // Empty message — shown when no thermals exist OR when all
+                // detected thermals are outside the current radar range.
+                if pilotCoord == nil || inRangeCount == 0 {
                     VStack {
                         Spacer()
-                        Text("Termik bekleniyor")
+                        Text(thermals.isEmpty
+                             ? "Termik bekleniyor"
+                             : "Menzil dışında")
                             .font(.system(size: 10, weight: .medium, design: .rounded))
                             .foregroundColor(.white.opacity(0.5))
                             .padding(.bottom, 8)
@@ -94,11 +112,10 @@ struct ThermalRadar: View {
         let meanLat = (pilot.latitude + thermal.coordinate.latitude) / 2 * .pi / 180
         let xMeters = dLon * 111_320 * cos(meanLat)
         let yMeters = dLat * 110_540
-        let distM = sqrt(xMeters*xMeters + yMeters*yMeters)
-        let scale = distM > radiusM ? (radiusM / distM) : 1.0
-        let scaled = (xMeters * scale, yMeters * scale)
-        let dx = CGFloat(scaled.0 / radiusM) * (radius - 18)
-        let dy = -CGFloat(scaled.1 / radiusM) * (radius - 18)
+        // Thermals have already been filtered by range before being drawn,
+        // so a clamp here is unnecessary. Just scale proportionally.
+        let dx = CGFloat(xMeters / radiusM) * (radius - 18)
+        let dy = -CGFloat(yMeters / radiusM) * (radius - 18)
         return CGSize(width: dx, height: dy)
     }
 

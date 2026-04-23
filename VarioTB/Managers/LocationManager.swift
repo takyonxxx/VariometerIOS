@@ -4,6 +4,9 @@ import CoreMotion
 import Combine
 
 final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
+    /// Shared instance for App Intents.
+    static weak var shared: LocationManager?
+
     // Public published state
     @Published var coordinate: CLLocationCoordinate2D?
     @Published var gpsAltitude: Double = 0          // m (ellipsoidal from GPS)
@@ -31,6 +34,7 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
 
     override init() {
         super.init()
+        LocationManager.shared = self
         manager.delegate = self
         manager.desiredAccuracy = kCLLocationAccuracyBest
         manager.distanceFilter = kCLDistanceFilterNone
