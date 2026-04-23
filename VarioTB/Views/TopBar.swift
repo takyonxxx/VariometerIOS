@@ -1,4 +1,5 @@
 import SwiftUI
+import CoreLocation
 
 /// Top instrument bar. Shows a fixed GPS status pill on the left, then
 /// user-configurable action buttons in the order/visibility the pilot has
@@ -54,18 +55,31 @@ struct TopBar: View {
     @ViewBuilder
     private func itemView(for item: ToolbarItemKind) -> some View {
         switch item {
-        case .mapToggle:
-            Button { settings.showMapBackground.toggle() } label: {
-                Image(systemName: settings.showMapBackground ? "map.fill" : "map")
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundColor(settings.showMapBackground ? .cyan : .white.opacity(0.7))
-                    .padding(7)
-                    .background(Circle().fill(Color.black.opacity(0.55)))
-            }
 
         case .simulator:
+            // Simulator is task-only now: without a task there's nothing
+            // to simulate. The button shows a disabled/dim state when no
+            // task is loaded so the user understands why it's inert.
+            let hasTask = !task.turnpoints.isEmpty
             Button {
-                if simulator.isRunning { simulator.stop() } else { simulator.start() }
+                if simulator.isRunning {
+                    simulator.stop()
+                } else if hasTask {
+                    let waypoints: [FlightSimulator.TaskWaypoint] =
+                        task.turnpoints.enumerated().map { (idx, tp) in
+                            let isInterior = idx > 0 && idx < task.turnpoints.count - 1
+                            return FlightSimulator.TaskWaypoint(
+                                coord: CLLocationCoordinate2D(
+                                    latitude: tp.latitude,
+                                    longitude: tp.longitude),
+                                radiusM: tp.radiusM,
+                                altM: tp.altitudeM + 400,
+                                climbAtTP: isInterior
+                            )
+                        }
+                    simulator.loadTask(waypoints)
+                    simulator.start()
+                }
             } label: {
                 HStack(spacing: 4) {
                     Image(systemName: simulator.isRunning ? "stop.circle.fill" : "play.circle.fill")
@@ -73,7 +87,9 @@ struct TopBar: View {
                     Text("SIM")
                         .font(.system(size: 11, weight: .heavy, design: .rounded))
                 }
-                .foregroundColor(simulator.isRunning ? .orange : .white.opacity(0.7))
+                .foregroundColor(simulator.isRunning
+                                 ? .orange
+                                 : (hasTask ? .white.opacity(0.7) : .white.opacity(0.25)))
                 .padding(.horizontal, 8).padding(.vertical, 4)
                 .background(
                     Capsule()
@@ -83,6 +99,7 @@ struct TopBar: View {
                             lineWidth: 1.5))
                 )
             }
+            .disabled(!hasTask && !simulator.isRunning)
 
         case .waypoints:
             Button { showWaypoints = true } label: {

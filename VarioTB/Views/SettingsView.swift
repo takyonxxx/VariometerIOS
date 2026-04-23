@@ -266,39 +266,35 @@ struct SettingsView: View {
 
     private var displaySection: some View {
         Section(L10n.string("display")) {
-            Toggle(L10n.string("map_background"), isOn: $settings.showMapBackground)
-
-            if !settings.showMapBackground {
-                Picker(L10n.string("background_color"), selection: Binding(
-                    get: { settings.backgroundTheme },
-                    set: { settings.backgroundTheme = $0 }
-                )) {
-                    ForEach(BackgroundTheme.allCases) { theme in
-                        HStack {
-                            LinearGradient(colors: theme.gradient,
-                                           startPoint: .top, endPoint: .bottom)
-                                .frame(width: 28, height: 28)
-                                .clipShape(RoundedRectangle(cornerRadius: 6))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 6)
-                                        .stroke(Color.white.opacity(0.25), lineWidth: 1)
-                                )
-                            Text(theme.rawValue)
-                        }
-                        .tag(theme)
+            Picker(L10n.string("background_color"), selection: Binding(
+                get: { settings.backgroundTheme },
+                set: { settings.backgroundTheme = $0 }
+            )) {
+                ForEach(BackgroundTheme.allCases) { theme in
+                    HStack {
+                        LinearGradient(colors: theme.gradient,
+                                       startPoint: .top, endPoint: .bottom)
+                            .frame(width: 28, height: 28)
+                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .stroke(Color.white.opacity(0.25), lineWidth: 1)
+                            )
+                        Text(theme.rawValue)
                     }
+                    .tag(theme)
                 }
-                .pickerStyle(.navigationLink)
-
-                LinearGradient(colors: settings.backgroundTheme.gradient,
-                               startPoint: .top, endPoint: .bottom)
-                    .frame(height: 70)
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10)
-                            .stroke(Color.white.opacity(0.15), lineWidth: 1)
-                    )
             }
+            .pickerStyle(.navigationLink)
+
+            LinearGradient(colors: settings.backgroundTheme.gradient,
+                           startPoint: .top, endPoint: .bottom)
+                .frame(height: 70)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(Color.white.opacity(0.15), lineWidth: 1)
+                )
         }
     }
 

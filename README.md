@@ -1,98 +1,118 @@
 # Vario TB — iOS Paragliding Variometer
 
-Yamaç paraşütü ve planör pilotları için SwiftUI ile yazılmış, tek-ekran odaklı variometer uygulaması. Türkçe/İngilizce arayüz, uydu haritası, barometrik vario, rüzgâr hesabı, termik radarı, **FAI üçgen tespiti**, IGC uçuş kaydı, CUP waypoint dosyası, LiveTrack24 canlı takip ve **Siri Shortcuts** içerir.
+Yamaç paraşütü ve planör pilotları için SwiftUI ile yazılmış, **grid tabanlı özelleştirilebilir panel** odaklı variometer uygulaması. Türkçe/İngilizce arayüz, uydu haritası, barometrik vario, rüzgâr hesabı, termik radarı, **FAI üçgen tespiti**, **XCTrack-uyumlu yarışma görevleri (QR ile paylaşım)**, IGC uçuş kaydı, LiveTrack24 canlı takip ve Siri Shortcuts içerir.
 
-**Hedef cihaz:** iPhone 16 Pro (iOS 17+) — barometre ve yüksek-hassasiyetli GPS gerekir.
+**Hedef cihaz:** iPhone 15/16 Pro (iOS 17+) — barometre ve yüksek-hassasiyetli GPS gerekir.
 
 ---
 
 ## Ekran Görüntüleri
 
 <p align="center">
-  <img src="docs/screenshots/01-map-view.png" alt="Harita + FAI üçgen + kapatma oku" width="280">
+  <img src="VarioTB/docs/screenshots/free-flight-panel.png" alt="Serbest uçuş paneli" width="250">
   &nbsp;&nbsp;
-  <img src="docs/screenshots/02-instrument-view.png" alt="Sadece enstrüman görünümü" width="280">
+  <img src="VarioTB/docs/screenshots/competition-task-editor.png" alt="Yarışma görevi editörü" width="250">
   &nbsp;&nbsp;
-  <img src="docs/screenshots/03-settings.png" alt="Ayarlar — İngilizce" width="280">
+  <img src="VarioTB/docs/screenshots/task-qr-share.png" alt="Görev QR paylaşımı" width="250">
 </p>
 
 <p align="center">
-  <i>Sol: uydu haritası + canlı FAI üçgeni, HUD'da bearing oku ve kapanış mesafesi, yeşil "home" hedef işaretçisi</i><br>
-  <i>Orta: full-screen enstrüman görünümü — büyük vario + yatay windsock + termik radarı</i><br>
-  <i>Sağ: ayarlar — TR/EN dil seçici, pilot bilgileri, LiveTrack24 entegrasyonu</i>
+  <i>Sol: serbest uçuş paneli — vario + yer hızı/rakım + yatay windsock + termik radarı + canlı uydu haritası, altta saat ve pil. Tüm kartlar uzun bas ile sürükle-bırak düzenlenebilir.</i><br><br>
+  <i>Orta: yarışma görevi sayfası — görev mesafesi, turnpoint sayısı, QR ile içe/dışa aktarma, başlama ve deadline saatleri, 6 TP'lik Ayaş task listesi.</i><br><br>
+  <i>Sağ: QR paylaşımı — XCTrack v2 formatında tam uyumlu QR kod. Başka bir Vario TB veya XCTrack cihazı bu QR'ı tarayarak görevi saniyeler içinde yükler.</i>
 </p>
 
 ---
 
 ## Özellikler
 
-### Ana ekran
-- **Büyük vario göstergesi** — tırmanışta yeşil, alçalmada kırmızı, sıfır civarında beyaz. "+" işareti sıfıra yakınken gizlenir.
-- **Barometrik + GPS fusion** — iOS `CMAltimeter` ile basınç-tabanlı dikey hız, GPS fallback.
-- **Telemetry şeridi** — irtifa, yer hızı, rota, koordinat. Koordinat formatları: DD, DMS, DM, UTM, MGRS.
-- **Rüzgâr göstergesi** — yatay "windsock" widget'ı, pole rüzgârın GELDIĞİ yönde ring kenarında. 16-nokta kompas (N/NE/ENE/E/...) merkez altında.
-- **Termik radarı** — tespit edilen tüm termikleri mesafe+kuvvete göre gösterir. Renk kodlu (aqua-green en güçlüsü, lavender en zayıfı). Simülatör termikleri ayrı kategori.
-- **Uydu harita arka planı** — MapKit Hybrid mode, 3D elevation. Opsiyonel. Gerçek termikler harita üzerinde işaretlenir.
-- **Alt durum çubuğu** — büyük saat (saniye dahil) + pil yüzdesi, pilot havada kolayca görebilsin diye.
+### Grid tabanlı özelleştirilebilir panel
 
-### FAI Üçgen Tespiti
+- **4 kolon × N satır** grid. Her kart (vario, rakım, harita, vb.) belirli hücrelere yerleşir, boyutu ve konumu değiştirilebilir.
+- **Uzun bas → edit mode** — kartlar titrer, silme/taşıma/boyutlandırma kolları görünür.
+- **Sürükle-bırak swap** — bir kartı başka bir kartın üzerine sürüklersen yer değiştirirler (aynı boyutlularsa). Farklı boyutlardaysa iOS home-screen tarzı cascade push.
+- **Sağ alt boyut kolu** — kartın genişliğini/yüksekliğini gridte snap-to-cell ile değiştir.
+- **Gizli kartlar listesi** — editleme modunda altta kaldırılmış kartlar görünür, tıklayarak geri eklenir.
+- **İki hazır default**:
+  - **Yarışma layout** — vario + HEDEF (task-aware bearing oku) + yer hızı + rakım + sonraki TP mesafesi + goal mesafesi + wind/radar + harita + saat/pil
+  - **Serbest uçuş layout** — vario + yer hızı/rakım + wind/radar + büyük harita + saat/pil (task kartları yok)
+- **Edit mode'da sabit footer** — Yarışma / Serbest / Tamam butonları scroll etse bile ekranın altında sabit durur.
+
+### XCTrack-uyumlu yarışma görevleri
+
+- **QR ile içe/dışa aktarma** — XCTrack v2 polyline formatı (bit-perfect uyumlu, `go-xctrack` referansıyla doğrulanmış). `Scan QR Code` tuşu → kamera → Vario TB'ye veya başka XCTrack cihazına saniyeler içinde task yükler.
+- **Turnpoint tipleri** — Takeoff, SSS (Start of Speed Section), Turnpoint, ESS (End of Speed Section), Goal. Her TP için silindir yarıçapı, irtifa, ENTRY/EXIT.
+- **Görev zamanlaması** — başlama saati (varsayılan 13:00 UTC) ve deadline (varsayılan 16:00 UTC), UI üzerinden set/clear.
+- **Optimum tangent rota hesabı** — her silindirin kenarında optimal geçiş noktası 8 iterasyon bisector refinement ile. FlySkyhy/XCTrack scoring ile uyumlu.
+- **Canlı reach detection** — pilot bir silindirin içine (radius + 15m GPS tolerance) girdiğinde o TP "reached" olarak işaretlenir. Sıralı — TP2'yi geçmeden TP3 reach edilemez.
+- **HEDEF bearing kartı** — ok pilotun o an uçması gereken yönü gösterir (sıradaki TP'ye göre), altında hedef azimut.
+- **Mesafe kartları**:
+  - **Sonraki TP** — pilotun bir sonraki silindir kenarına olan **optimum rota** mesafesi (silindir içindeyse 0)
+  - **Goal** — pilottan goal silindirine kadar **kalan task'ın tamamı** (her TP'nin tangent noktası üzerinden)
+  - **Takeoff** — pilotun kalkış noktasına **düz kuş uçuşu** mesafesi
+- **Harita üzerinde görsel** — her silindir mavi halka, aralarında navy tangent rota çizgileri 3.5px kalınlıkta, orta noktalarda yön okları. Reached TP'ler farklı tonda işaretli.
+- **Task yüklenince auto-fit** — QR tarandığı an harita auto-follow'u kapatıp tüm task'ı çerçeveler (her silindirin 4 cardinal kenar noktası + pilot bounding box'u).
+- **Simülatör task-aware** — task yüklüyken SIM butonu aktif. Pilot task'ın takeoff TP'sine ışınlanır, sonra her TP'yi sırayla cylinder içine girerek ziyaret eder, ara TP'lerde 5sn termik simüle eder, goal cylinder'a girince durur.
+
+### Ana uçuş panoları
+
+- **Büyük vario göstergesi** — tırmanışta yeşil, alçalmada kırmızı, sıfır civarında beyaz.
+- **Barometrik + GPS fusion** — iOS `CMAltimeter` ile basınç-tabanlı dikey hız, GPS fallback.
+- **Yer hızı + rakım** — büyük turuncu rakamlar, monospaced digit.
+- **Rüzgâr kadranı (WindDial)** — yatay "windsock" widget'ı, pole rüzgârın GELDİĞİ yönde ring kenarında. 16-nokta kompas (N/NE/ENE/E/...) merkez altında.
+- **Termik radarı** — tespit edilen tüm termikleri mesafe+kuvvete göre gösterir. Renk kodlu (aqua-green en güçlüsü, lavender en zayıfı). Menzil 1500m, simülatör termikleri ayrı kategori.
+- **Uydu harita kartı** — MapKit Hybrid mode, offline cache. FAI üçgen / task / termikler / pilot marker üzerine overlay.
+- **Koordinat pili** — DD / DMS / DM / UTM / MGRS formatları.
+- **Saat + Pil kartları** — saniye dahil büyük saat, renk kodlu pil yüzdesi (yeşil ≥50 / sarı ≥20 / kırmızı).
+
+### FAI Üçgen Tespiti (serbest uçuş modu)
+
 - **Canlı üçgen takibi** — kayıt sırasında her 10 saniyede geometrik algoritma çalışır, track history'de **FAI-valid en büyük üçgeni** bulur.
 - **FAI kuralları** — min kenar / toplam perimeter ≥ 0.28, kapanış mesafesi / perimeter ≤ 0.20.
-- **Harita üzerinde görsel** — 3 turnpoint polygon olarak çizilir. Açıksa sarı kesik kenar, kapanıyorsa yeşil dolu.
-- **Canlı kapatma oku** — pilot'un pozisyonundan flight-start'a uzanan yeşil kesik çizgi, ucunda büyük "home" hedef işaretçisi (halkalar + merkez nokta) + ok başı.
-- **HUD kartı** — üçgen ikonu + perimeter km + **yukarı-ok bearing** (pilot heading'ine göre hangi yöne uçmalı) + closing mesafesi.
-- **Performans** — point thinning (≥200m aralıklı, max 150 nokta) + O(n³) brute force + n² pre-computed distance matrix. ~50ms hesaplama süresi, arka plan thread.
-
-### Siri Shortcuts (App Intents, iOS 16+)
-- **6 ses komutu**:
-  - "Hey Siri, Vario TB ile uçuş kaydı başlat"
-  - "Hey Siri, Vario TB ile uçuş kaydını durdur"
-  - "Hey Siri, Vario TB ile live tracking başlat"
-  - "Hey Siri, Vario TB ile live tracking durdur"
-  - "Hey Siri, Vario TB ile irtifamı söyle" → "İrtifa 1,247 metre"
-  - "Hey Siri, Vario TB ile dikey hızımı söyle" → "Dikey hız +2.8 metre bölü saniye"
-- **Shortcuts app entegrasyonu** — otomatik görünür, Home Screen'e eklenebilir.
-- **Lock Screen widget** desteği — iOS 17 Interactive Widget olarak kullanılabilir.
-- **iPhone 15 Pro Action Button** — tek intent bağlanarak hands-free kullanılabilir.
-- **Türkçe + İngilizce ifade** — her intent için.
-
-### Ses motoru
-- **Procedural DSP** — AVAudioSourceNode ile 4-harmonik buzzer. Base 500Hz → max 1600Hz pitch scaling. 2.5→8 Hz arası cadence — tırmanış arttıkça sıklaşır.
-- **Bluetooth otomatik routing** — AVAudioSession Bluetooth-A2DP.
-- **Ses test simülasyonu** — ayarlar ekranında 0→5 m/s rampa, elle slider.
-- **Eşik ayarlanabilir** — tırmanış eşiği, alçalma alarmı, base/max frekans.
+- **Harita üzerinde görsel** — 3 turnpoint polygon, kapatma oku ve home target işaretçisi.
+- **HUD kartı** — üçgen ikonu + perimeter km + bearing oku + closing mesafesi.
+- **Task yüklüyken FAI overlay gizli** — yarışma modunda iki görsel katmanın çakışmaması için.
+- **Performans** — point thinning (≥200m aralıklı, max 150 nokta) + n² pre-computed distance matrix + O(n³) brute force. ~50ms hesaplama süresi, arka plan thread.
 
 ### Uçuş kaydı & paylaşım
-- **IGC formatı** — FAI standardı, B-record (GPS fix) + H-record (pilot/glider/datum). Dosya: `Documents/Flights/YYYY-MM-DD_HHMMSS[_SIM].igc`. XCSoar / XCTrack / SeeYou / XContest açar.
+
+- **IGC formatı** — FAI standardı, B-record + H-record. Dosya: `Documents/Flights/YYYY-MM-DD_HHMMSS[_SIM].igc`. XCSoar / XCTrack / SeeYou / XContest açar.
 - **CUP waypoint dosyası** — SeeYou formatı, tespit edilen termikler thermal name + climb rate + timestamp ile. Dosya: `Documents/Waypoints/thermals_....cup`.
-- **Otomatik başlatma** — GPS fix var + (hız >5 km/h veya climb >1 m/s) olduğunda kayıt başlar. Simülatör başlayınca simülatör kaydı (tag: `_SIM`) başlar.
-- **Paylaş butonu** — tüm dosyalar listelenir. Her dosya tek tek paylaşılabilir (iOS native share sheet: WhatsApp, AirDrop, Mail, Files). Toplu paylaşım "Hepsini Paylaş" ile. Swipe-to-delete.
-- **Pilot/glider bilgisi IGC header'a yazılır** — ad, soyad, kanat marka/model, sertifika (EN A/B/C/D, CCC), tip (Paraglider/Hang Glider/Glider/Paramotor).
+- **Otomatik başlatma** — GPS fix + (hız >5 km/h veya climb >1 m/s) → kayıt başlar. Simülatör başlayınca simülatör kaydı (`_SIM`) başlar.
+- **Paylaş butonu** — tüm dosyalar listelenir. Her dosya tek tek (iOS share sheet) veya toplu "Hepsini Paylaş". Swipe-to-delete.
+- **Pilot/glider bilgisi IGC header'a yazılır** — ad, kanat marka/model, sertifika (EN A/B/C/D, CCC), tip (Paraglider/Hang Glider/Glider/Paramotor).
 
 ### LiveTrack24 canlı takip
-- **Native session-aware protokol** — `client.php` login → sessionID → `track.php` fixleri. HTTPS first, HTTP fallback.
-- **Ayarlardan aç/kapat** — kullanıcı adı (AppStorage), şifre (iOS Keychain).
-- **5 saniyede bir pozisyon** — batch upload, XCTrack'e benzer veri tüketimi (~100KB/saat).
-- **Pilot/glider bilgisi** — IGC ile aynı ayarlardan vtype (Paraglider=1, Hang=2, Glider=8, Paramotor=16) ve vname otomatik dolar.
-- **Sadece pozisyon sayısı görünür** — UI sade, "247 pozisyon gönderildi" + hata mesajları.
 
-### Simülatör (geliştirme/demo)
-- **Kumludoruk Ayaş FAI üçgen senaryosu** — 40.0318°N, 32.3282°E, 1030m launch.
-- **3 turnpoint rotası** (scripted):
-  1. Launch → TP1 (2.0 km doğu) — glide + 3.5 m/s termik + 150m climb
-  2. TP1 → TP2 (1.9 km KKB) — glide + 2.5 m/s termik + 100m climb
-  3. TP2 → Launch — glide, üçgeni kapatır
-- **Perimeter 5.8 km**, min/total = 0.33 (FAI valid), kapanış ≈ 0 m (tam dönüş).
-- **~60 saniye gerçek zamanda** tamamlanır (timeScale 10×).
-- **Snap-to-turnpoint** — 150m'e yaklaşınca simülatör turnpoint'e snap eder, kesin geometri sağlar.
-- **Hakim rüzgâr 315°** (NW), 2.8 m/s.
-- **Simülatör thermal'ları ayrı** — real termiklerle karışmaz.
-- **Dosyalar `_SIM` etiketli** — uçuş kayıtları karışmasın.
+- **Native session-aware protokol** — `client.php` login → sessionID → `track.php` fixleri. HTTPS first, HTTP fallback.
+- **5 saniyede bir pozisyon** — batch upload, XCTrack'e benzer veri tüketimi.
+- **Keychain şifre** — kullanıcı adı AppStorage, şifre iOS Keychain.
+- **Session ID formülü** — XCTrack ile bire-bir: `(random & 0x7F000000) | (userID & 0x00FFFFFF) | 0x80000000`.
+
+### Waypoint kütüphanesi
+
+- **JSON persist** — `Documents/waypoint_library.json`.
+- **Manuel giriş** — name + koordinat + opsiyonel irtifa.
+- **CUP import/export** — SeeYou formatında içe/dışa aktarma.
+- **Task editörden seçim** — kütüphaneden turnpoint'e doğrudan eklenebilir.
+
+### Siri Shortcuts (App Intents, iOS 16+)
+
+- 6 ses komutu: kayıt başlat/durdur, live tracking başlat/durdur, irtifa söyle, dikey hız söyle.
+- Shortcuts app entegrasyonu, Home Screen'e eklenebilir.
+- iPhone 15/16 Pro **Action Button**'a bağlanabilir.
+- Türkçe + İngilizce.
+
+### Ses motoru
+
+- **Procedural DSP** — AVAudioSourceNode ile 4-harmonik buzzer. Base 500Hz → max 1600Hz pitch scaling. 2.5→8 Hz arası cadence.
+- **Bluetooth otomatik routing** — AVAudioSession Bluetooth-A2DP.
+- **Ses test** — ayarlar ekranında 0→5 m/s rampa.
 
 ### Dil desteği
+
 - **Türkçe (varsayılan) + İngilizce** — ayarlarda segmented picker.
 - **Singleton + `@Published`** — dil değiştiğinde tüm ekranlar anında re-render.
-- **iOS UserDefaults'ta kalıcı** — uygulama yeniden açılınca seçim hatırlanır.
 
 ---
 
@@ -119,9 +139,13 @@ VarioTB/
 ├── VarioTBApp.swift               App entry + audio session setup
 ├── Info.plist                     İzinler, background modes, ATS exception
 ├── Assets.xcassets/               App icon
+├── docs/screenshots/              README ekran görüntüleri
 ├── Models/
 │   ├── AppSettings.swift          @AppStorage ayarlar + pilot/glider
+│   ├── PanelLayout.swift          Grid layout + card kinds + swap/placing
+│   ├── CompetitionTask.swift      Task + turnpoint + optimal tangent + reach
 │   ├── ThermalPoint.swift         ThermalPoint + ThermalSource(.real/.simulated)
+│   ├── WaypointLibrary.swift      JSON waypoint persistence
 │   └── L10n.swift                 TR/EN çeviri + LanguagePreference singleton
 ├── Intents/
 │   └── VarioTBIntents.swift       Siri App Intents + AppShortcutsProvider
@@ -129,7 +153,7 @@ VarioTB/
 │   ├── LocationManager.swift      GPS + CMAltimeter + simulator injection
 │   ├── VarioManager.swift         Vario filter + termik tespit (6s streak)
 │   ├── WindEstimator.swift        Circling-based rüzgâr (course spread >90°)
-│   ├── FlightSimulator.swift      Kumludoruk FAI triangle senaryosu (~60s)
+│   ├── FlightSimulator.swift      Task-aware simulator (cylinder entry, thermals)
 │   ├── FAITriangleDetector.swift  O(n³) FAI triangle search, flight-start tracking
 │   ├── IGCRecorder.swift          FAI IGC B-record / H-record yazar
 │   ├── WaypointExporter.swift     SeeYou CUP formatı
@@ -139,17 +163,19 @@ VarioTB/
 ├── Audio/
 │   └── AudioEngine.swift          AVAudioSourceNode DSP (4 harmonik, cadence)
 ├── Utils/
-│   └── CoordConverter.swift       DMS/DM/UTM/MGRS dönüşümleri
+│   ├── CoordConverter.swift       DMS/DM/UTM/MGRS dönüşümleri
+│   └── TaskQRCodec.swift          XCTrack v1/v2/XCTSKZ polyline codec
 └── Views/
-    ├── ContentView.swift          Split layout (map on/off) + FAI reset hooks
-    ├── VarioBigReadout.swift      Büyük m/s göstergesi (compact mode)
+    ├── ContentView.swift          ZStack + panel grid + task fit observer
+    ├── PanelView.swift            Grid renderer + drag/resize + edit footer
+    ├── TopBar.swift               GPS pill + SIM + waypoints + task + share + settings
+    ├── SatelliteMapView.swift     MapKit + task overlay + FAI + recenter
     ├── WindDial.swift             Yatay windsock + tick + N/E/S/W
     ├── ThermalRadar.swift         Tüm termiklerin radar ekranı
-    ├── SatelliteMapView.swift     MapKit Hybrid + triangle overlay + closing arrow
-    ├── FAITriangleHUD.swift       Üçgen kartı + bearing oku + closing mesafesi
-    ├── TopBar.swift               GPS/Ses/Harita/SIM/Paylaş/Ayarlar
-    ├── BottomTelemetry.swift      ALT/GND SPD/COURSE + koordinat barı
-    ├── BottomStatusBar.swift      Saat (HH:mm:ss) + pil (ekranın en altı)
+    ├── CompetitionTaskView.swift  Task editörü + QR scan/share + timing
+    ├── WaypointsView.swift        Waypoint kütüphanesi CRUD
+    ├── TurnpointEditor.swift      Tek TP edit sayfası
+    ├── TaskQRCaptureView.swift    Kamera QR tarayıcı
     ├── SettingsView.swift         Form — tamamen L10n üzerinden
     ├── FilesListView.swift        IGC/CUP listesi + paylaş/sil
     └── ShareSheet.swift           UIActivityViewController wrapper
@@ -159,28 +185,29 @@ VarioTB/
 
 ## Önemli teknik notlar
 
+**Grid layout collision & swap.** Kartlar `[col..<col+width] × [row..<row+height]` dikdörtgenleri. Drag end'de drop hedefi başka bir kart tarafından işgal ediliyorsa **swap** dener (aynı boyutlularsa); değilse **placing** ile hedef konuma yerleştirir ve çakışanları aşağı iter (iOS home-screen cascade). PanelLayout değişimi `@AppStorage` JSON ile persiste edilir.
+
+**XCTrack polyline codec.** Google polyline algoritması (5 decimal precision, zig-zag encoding). XCTrack v2 formatında: `XCTSKZ:<base64>` → gzip decompressed → polyline koordinat listesi + turnpoint tipleri + radii + başlama/deadline saati. `Utils/TaskQRCodec.swift` Ankara koordinatlarıyla bit-perfect go-xctrack reference ile doğrulandı.
+
+**Optimum tangent route.** Silindir ağı için en kısa pilot-goal yolu: pilot anchor, her ara TP cylinder edge'inde tangent noktası, goal cylinder center (pilot goal'e girmek zorunda). 8 iterasyon bisector refinement: her iterasyonda her ara TP için önceki + sonraki path noktalarına bakıp açıortayı hesapla, silindir kenarına projekt et. 6 TP'lik Ayaş task'ında center-to-center 22.7 km → optimum 18.7 km (17.6% daha kısa).
+
+**Reach detection.** `updateProgress(pilot:)` her GPS update'te çağrılır. Pilot `radius + 15m` içindeyse reach, sıralı — bir TP reach edilmeden sonrakine geçilemez. Tangent pass (içeri girmeden geçme) reach saymaz — gerçek yarışma kuralı.
+
+**Harita task overlay cache.** SatelliteMapView coordinator'da `lastTaskSignature` (TP id+coord+radius concat). updateUIView her GPS update'te tetiklenir (~10Hz) ama **sadece signature değiştiğinde** cylinder/route overlay'leri yeniden build edilir. Aksi halde sim sırasında overlay'ler flicker eder.
+
+**Task-aware simulator.** `FlightSimulator.loadTask(waypoints:)` ile turnpoint listesi yüklenir. `start()` pilot'u ilk TP'nin koordinatına ışınlar, sonra her TP için `.taskLeg` fazında önce optimum tangent noktasına uçar, tangent noktasından 80m yaklaşınca cylinder merkezine deflekte olur, `radius - 5m` içine girince reach, interior TP'lerse 5sn 3.8 m/s termal (`.taskClimb`), sonra sonrakine geçer. Goal cylinder içine girince durur. `timeScale = 18×` — 19 km task ~2 dakika real time.
+
 **Vario filter.** `damperLevel` sabit 1 (bypass). iOS barometre verisi zaten düşük-gürültülü; ek damper gecikme ekliyordu. Termik tespiti için 0.20s regression window yeterli.
 
 **Rüzgâr tahmini.** Pilotun GPS track'inden circling tekniği: ground-speed min/max rotation → wind vector. Minimum course spread 90° gerekir. İlk bir-iki dakika spiralde "confidence" 0'dan 1'e çıkar.
 
-**FAI triangle detection.** Kaydedilen her fix thinning filter'ından geçer (≥200m aralık, max 150 nokta). Her 10 saniyede O(n³) brute force arka plan thread'de çalışır — 150 nokta için ~1.7M kombinasyon, 50ms altı. Pre-computed n² distance matrix ile i<j<k triple loop'ta tekrar hesaplama önlenir. Early pruning: `a < bestP * 0.28` olduğunda iç döngüden atla.
-
-**Closing arrow.** Pilot'un mevcut fix'i → `flightStart` (ilk recordFix çağrısıyla yakalanan koordinat). Kesik yeşil polyline + yeşil home target (4-katmanlı halka: siyah kontur → yeşil → beyaz iç → yeşil merkez). Ok başı home'un hemen önünde. `FlightRecorder.currentIGCURL` her değiştiğinde detector sıfırlanır — her yeni uçuş (real veya sim) temiz başlar.
+**FAI triangle detection.** Thinning filter'ından geçen track (≥200m aralık, max 150 nokta). Her 10 saniyede O(n³) brute force arka plan thread — 150 nokta için ~1.7M kombinasyon, 50ms altı. Pre-computed n² distance matrix, early pruning.
 
 **IGC dosya yolu.** `Documents/Flights/2026-04-23_105239_SIM.igc`. B-record örneği:
 ```
 B1052404001885N03219697EA0102701027
 ```
 — `10:52:40` UTC, `40°01.885'N 032°19.697'E`, basınç irtifa 1027m, GPS irtifa 1027m.
-
-**LiveTrack24 session ID.** XCTrack ile bire-bir: üst bit 1, sonraki 7 bit random, alt 24 bit userID.
-```
-sid = (random & 0x7F000000) | (userID & 0x00FFFFFF) | 0x80000000
-```
-
-**App Intents shared pattern.** `FlightRecorder`, `LiveTrack24Tracker`, `LocationManager`'ın `static weak var shared` property'leri var — `attach()` veya `init()` içinde kendilerini atar. App Intent `perform()` metodları bu shared pointer üzerinden canlı state'e erişir. `@MainActor.run` ile UI thread garantisi.
-
-**Kumludoruk koordinatı.** Ayaş, Ankara: `40.0318°N, 32.3282°E, 1030m`. Simülatör buradan başlar.
 
 **Bundle ID.** `com.tbiliyor.VarioTB` — sabit.
 
@@ -192,8 +219,9 @@ sid = (random & 0x7F000000) | (userID & 0x00FFFFFF) | 0x80000000
 - [ ] Türkiye takeoff/landing sites veritabanı
 - [ ] Apple Watch companion — wrist-variometer (WatchConnectivity + SwiftUI for watchOS)
 - [ ] Otomatik IGC upload (landing detection + LiveTrack24 post-flight upload)
-- [ ] XContest submit entegrasyonu (LiveTrack24 profile → XContest forward ayarı)
-- [ ] Lock Screen widget (iOS 17 Interactive Widget) — Siri intents'le
+- [ ] XContest submit entegrasyonu
+- [ ] Airtribune / PWCA task formatları (XCTrack'in yanında)
+- [ ] Lock Screen widget (iOS 17 Interactive Widget)
 
 ---
 

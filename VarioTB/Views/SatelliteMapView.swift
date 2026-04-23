@@ -13,6 +13,12 @@ struct SatelliteMapView: UIViewRepresentable {
     /// triangle" animation. Set to nil to skip. Used when the user taps
     /// the FAI HUD card.
     let fitTriangleToken: UUID?
+    /// Changes to this UUID trigger a one-time "zoom to fit the entire
+    /// task" animation — all turnpoint cylinders + pilot in view.
+    /// Auto-follow should be disabled before bumping this token so the
+    /// user can inspect the task without immediately being snapped back
+    /// to their pilot marker.
+    let fitTaskToken: UUID?
     @Binding var autoFollow: Bool   // true = follow pilot; false = free pan
 
     func makeUIView(context: Context) -> MKMapView {
@@ -28,9 +34,29 @@ struct SatelliteMapView: UIViewRepresentable {
         mv.delegate = context.coordinator
         context.coordinator.parent = self
 
-        // Detect user-initiated pan so we can disable auto-follow.
-        // We attach a pan gesture recognizer that doesn't cancel Map's own,
-        // it just observes.
+        // Initial region: center on the pilot if we already have a fix,
+        // otherwise fall back to Ayaş so the user sees something rather
+        // than the default world view. We intentionally do NOT update
+        // `lastCenter` here — we want updateUIView to still do its
+        // "first real centering" pass once the pilot's actual coordinate
+        // arrives from the GPS or simulator.
+        let initialCenter = coordinate
+            ?? CLLocationCoordinate2D(latitude: 40.031450, longitude: 32.328050)  // Ayaş/Kumludoruk
+        let initialSpan = MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05)
+        mv.setRegion(MKCoordinateRegion(center: initialCenter, span: initialSpan),
+                     animated: false)
+
+        // If coordinate is already available at makeUIView time, drop the
+        // pilot annotation now — but still leave lastCenter unset so the
+        // next updateUIView properly recenters once real movement happens.
+        if let c = coordinate {
+            let a = PilotAnnotation()
+            a.coordinate = c
+            mv.addAnnotation(a)
+            context.coordinator.pilotAnnotation = a
+        }
+
+        // Observe user pans/pinches to disable auto-follow.
         let pan = UIPanGestureRecognizer(target: context.coordinator,
                                          action: #selector(Coordinator.userPanned(_:)))
         pan.delegate = context.coordinator
@@ -51,31 +77,39 @@ struct SatelliteMapView: UIViewRepresentable {
         let followJustTurnedOn = !context.coordinator.lastAutoFollow && autoFollow
         context.coordinator.lastAutoFollow = autoFollow
 
+        // Diagnostic: log first few updates + any autoFollow change
+        context.coordinator.updateCount += 1
+        if context.coordinator.updateCount <= 5 ||
+           followJustTurnedOn ||
+           context.coordinator.lastLoggedAutoFollow != autoFollow {
+            let coordStr = coordinate.map { String(format: "(%.5f,%.5f)", $0.latitude, $0.longitude) } ?? "nil"
+            print("[MAP] update#\(context.coordinator.updateCount) coord=\(coordStr) autoFollow=\(autoFollow) lastCenter=\(context.coordinator.lastCenter == nil ? "nil" : "set")")
+            context.coordinator.lastLoggedAutoFollow = autoFollow
+        }
+
         if let c = coordinate {
-            // Auto-follow only if enabled and pilot has moved meaningfully
             if autoFollow {
                 let needsInitialCenter = context.coordinator.lastCenter == nil || followJustTurnedOn
                 let movedEnough: Bool = {
                     guard let last = context.coordinator.lastCenter else { return true }
                     let a = CLLocation(latitude: last.latitude, longitude: last.longitude)
                     let b = CLLocation(latitude: c.latitude, longitude: c.longitude)
-                    return a.distance(from: b) > 80   // only re-center after 80m drift
+                    return a.distance(from: b) > 30
                 }()
 
                 if needsInitialCenter || movedEnough {
+                    print("[MAP] RECENTER reason=\(needsInitialCenter ? "initial" : "moved")")
                     context.coordinator.programmaticChange = true
                     if context.coordinator.lastCenter == nil {
                         let span = MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
                         mv.setRegion(MKCoordinateRegion(center: c, span: span), animated: false)
                     } else {
-                        // Preserve current zoom — just re-center
                         mv.setCenter(c, animated: true)
                     }
                     context.coordinator.lastCenter = c
                 }
             }
 
-            // Pilot annotation always updates position (regardless of follow state)
             if let pilot = context.coordinator.pilotAnnotation {
                 pilot.coordinate = c
             } else {
@@ -122,34 +156,35 @@ struct SatelliteMapView: UIViewRepresentable {
         }
 
         // Sync competition task overlays: turnpoint cylinders (blue circles)
-        // + connecting route line. Cleared and rebuilt each update so
-        // edits appear immediately.
-        for overlay in mv.overlays
-            where overlay is TurnpointCylinderOverlay
-               || overlay is TaskRouteOverlay {
-            mv.removeOverlay(overlay)
-        }
-        for ann in mv.annotations.compactMap({ $0 as? TurnpointAnnotation }) {
-            mv.removeAnnotation(ann)
-        }
-        if let task = task, !task.turnpoints.isEmpty {
-            for (idx, tp) in task.turnpoints.enumerated() {
-                let cyl = TurnpointCylinderOverlay(turnpoint: tp)
-                mv.addOverlay(cyl)
-                let ann = TurnpointAnnotation(turnpoint: tp, index: idx + 1)
-                mv.addAnnotation(ann)
+        // + connecting route line. To avoid flicker during high-frequency
+        // GPS updates, we only tear down and rebuild when the task's
+        // turnpoint signature (count, IDs, coords, radii) actually
+        // changes — see Coordinator.lastTaskSignature.
+        let sig = Self.taskSignature(task)
+        if sig != context.coordinator.lastTaskSignature {
+            context.coordinator.lastTaskSignature = sig
+            for overlay in mv.overlays
+                where overlay is TurnpointCylinderOverlay
+                   || overlay is TaskRouteOverlay {
+                mv.removeOverlay(overlay)
             }
-            if task.turnpoints.count >= 2 {
-                // Compute optimal tangent route: each turnpoint's "optimal
-                // point" on its cylinder edge, minimizing total distance.
-                // Flyskyhy and XCTrack both use this optimization — the
-                // drawn route is what a pilot actually flies (tangent to
-                // cylinders, not through centers).
-                let optimal = Self.optimalRoutePoints(for: task.turnpoints)
-                for i in 0..<(task.turnpoints.count - 1) {
-                    let leg = TaskRouteOverlay(fromPoint: optimal[i],
-                                                toPoint: optimal[i + 1])
-                    mv.addOverlay(leg)
+            for ann in mv.annotations.compactMap({ $0 as? TurnpointAnnotation }) {
+                mv.removeAnnotation(ann)
+            }
+            if let task = task, !task.turnpoints.isEmpty {
+                for (idx, tp) in task.turnpoints.enumerated() {
+                    let cyl = TurnpointCylinderOverlay(turnpoint: tp)
+                    mv.addOverlay(cyl)
+                    let ann = TurnpointAnnotation(turnpoint: tp, index: idx + 1)
+                    mv.addAnnotation(ann)
+                }
+                if task.turnpoints.count >= 2 {
+                    let optimal = Self.optimalRoutePoints(for: task.turnpoints)
+                    for i in 0..<(task.turnpoints.count - 1) {
+                        let leg = TaskRouteOverlay(fromPoint: optimal[i],
+                                                    toPoint: optimal[i + 1])
+                        mv.addOverlay(leg)
+                    }
                 }
             }
         }
@@ -176,6 +211,49 @@ struct SatelliteMapView: UIViewRepresentable {
                 context.coordinator.programmaticChange = false
             }
         }
+
+        // "Zoom to fit task" — triggered when the user loads a task via
+        // QR scan. Frames ALL task turnpoints (their cylinder edges,
+        // not just the center) plus the pilot into view so the whole
+        // task is visible at a glance without any panning.
+        if let token = fitTaskToken,
+           token != context.coordinator.lastFitTaskToken,
+           let t = task,
+           !t.turnpoints.isEmpty {
+            context.coordinator.lastFitTaskToken = token
+            context.coordinator.programmaticChange = true
+            // Sample each turnpoint's cylinder at the 4 cardinal edge
+            // points so the framing includes the full cylinder footprint
+            // rather than just the center.
+            var coords: [CLLocationCoordinate2D] = []
+            let metersPerDegLat = 111_000.0
+            for tp in t.turnpoints {
+                let metersPerDegLon = 111_000.0 * cos(tp.latitude * .pi / 180)
+                let dLat = tp.radiusM / metersPerDegLat
+                let dLon = tp.radiusM / metersPerDegLon
+                coords.append(CLLocationCoordinate2D(latitude: tp.latitude + dLat,
+                                                      longitude: tp.longitude))
+                coords.append(CLLocationCoordinate2D(latitude: tp.latitude - dLat,
+                                                      longitude: tp.longitude))
+                coords.append(CLLocationCoordinate2D(latitude: tp.latitude,
+                                                      longitude: tp.longitude + dLon))
+                coords.append(CLLocationCoordinate2D(latitude: tp.latitude,
+                                                      longitude: tp.longitude - dLon))
+            }
+            if let pilot = coordinate { coords.append(pilot) }
+            let rect = Self.boundingRect(for: coords)
+            // Less aggressive padding than triangle — the task itself is
+            // already well-distributed so we just need a small inset.
+            let padded = rect.insetBy(dx: -rect.size.width * 0.10,
+                                      dy: -rect.size.height * 0.10)
+            mv.setVisibleMapRect(padded,
+                                 edgePadding: UIEdgeInsets(top: 30, left: 20,
+                                                            bottom: 20, right: 20),
+                                 animated: true)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                context.coordinator.programmaticChange = false
+            }
+        }
     }
 
     /// Compute the bounding MKMapRect covering a set of coordinates.
@@ -188,6 +266,20 @@ struct SatelliteMapView: UIViewRepresentable {
             rect = rect.union(r)
         }
         return rect
+    }
+
+    /// Cheap stable signature of a task used to detect "did the set of
+    /// turnpoints change" without deep equality checks. If any turnpoint
+    /// is added/removed/moved/resized, the string changes, so the map's
+    /// overlay cache knows to rebuild.
+    private static func taskSignature(_ task: CompetitionTask?) -> String {
+        guard let t = task else { return "" }
+        var s = ""
+        for tp in t.turnpoints {
+            s += String(format: "%@/%.5f,%.5f,%.0f|",
+                        tp.id.uuidString, tp.latitude, tp.longitude, tp.radiusM)
+        }
+        return s
     }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
@@ -292,9 +384,20 @@ struct SatelliteMapView: UIViewRepresentable {
         var pilotAnnotation: PilotAnnotation?
         var lastCenter: CLLocationCoordinate2D?
         var lastAutoFollow: Bool = true
+        /// For diagnostic logging — counts updateUIView invocations and
+        /// remembers last autoFollow value we logged to avoid spam.
+        var updateCount: Int = 0
+        var lastLoggedAutoFollow: Bool = true
         /// Remembers the last fit-triangle token we handled, so we only
         /// animate the region change when the token actually changes.
         var lastFitToken: UUID?
+        var lastFitTaskToken: UUID?
+        /// Cached signature of the task's turnpoints — used to skip the
+        /// expensive overlay rebuild on every GPS update. Only when the
+        /// turnpoints actually change (edit, clear, import) do we tear
+        /// down and re-add the cylinder + route overlays. Without this,
+        /// task visuals flicker at ~10Hz while the simulator is running.
+        var lastTaskSignature: String = ""
         // When we programmatically re-center the map, the regionWillChange
         // callback fires too. This flag tells us to ignore it so we don't
         // accidentally turn off auto-follow.
@@ -305,6 +408,7 @@ struct SatelliteMapView: UIViewRepresentable {
         @objc func userPanned(_ g: UIPanGestureRecognizer) {
             // As soon as the user starts panning the map, turn off auto-follow
             if g.state == .began {
+                print("[MAP] userPanned → autoFollow=false")
                 DispatchQueue.main.async { [weak self] in
                     self?.parent?.autoFollow = false
                 }

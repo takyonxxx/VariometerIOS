@@ -7,7 +7,6 @@ import SwiftUI
 /// pilots need to be able to find it reliably, not accidentally reorder
 /// it off the bar during a flight.
 enum ToolbarItemKind: String, CaseIterable, Identifiable, Codable {
-    case mapToggle    = "map"          // toggle satellite/dark background
     case simulator    = "simulator"    // SIM start/stop pill
     case waypoints    = "waypoints"    // pin icon → Waypoints page
     case task         = "task"         // flag icon → CompetitionTask page
@@ -17,7 +16,6 @@ enum ToolbarItemKind: String, CaseIterable, Identifiable, Codable {
 
     var displayName: String {
         switch self {
-        case .mapToggle: return "Harita Arka Plan"
         case .simulator: return "Simülatör"
         case .waypoints: return "Waypointler"
         case .task:      return "Yarışma Görevi"
@@ -28,7 +26,6 @@ enum ToolbarItemKind: String, CaseIterable, Identifiable, Codable {
 
     var iconName: String {
         switch self {
-        case .mapToggle: return "map"
         case .simulator: return "play.circle"
         case .waypoints: return "mappin.and.ellipse"
         case .task:      return "flag.checkered"
@@ -37,9 +34,11 @@ enum ToolbarItemKind: String, CaseIterable, Identifiable, Codable {
         }
     }
 
-    /// Default order shown to users who haven't customized.
+    /// Default order shown to users who haven't customized. The map is
+    /// NOT in the toolbar — it's a panel card the pilot manages from
+    /// edit mode (long-press) like any other card.
     static var defaultOrder: [ToolbarItemKind] {
-        [.mapToggle, .simulator, .waypoints, .task, .share, .settings]
+        [.simulator, .waypoints, .task, .share, .settings]
     }
 }
 
@@ -137,6 +136,39 @@ final class AppSettings: ObservableObject {
     /// Use the `toolbarItems` computed property to read/write as typed.
     @AppStorage("toolbarItemsOrder") var toolbarItemsOrderRaw: String =
         ToolbarItemKind.defaultOrder.map(\.rawValue).joined(separator: ",")
+
+    /// Instrument panel layout (card positions + sizes), JSON-encoded.
+    /// Edited by the pilot via a long-press "edit mode" on the panel.
+    @AppStorage("panelLayout") var panelLayoutRaw: String = ""
+
+    /// Typed view of the stored panel layout. Returns default factory
+    /// layout if the stored JSON is empty or invalid. Also migrates older
+    /// saved layouts that predate the introduction of `.map` / `.battery`
+    /// cards — they are appended at the bottom of the grid so existing
+    /// pilots get the new cards without having to reset their layout.
+    var panelLayout: PanelLayout {
+        get {
+            guard var parsed = PanelLayout.fromJSON(panelLayoutRaw) else {
+                return PanelLayout.defaultLayout
+            }
+            let presentKinds = Set(parsed.cards.map { $0.kind })
+            var migrated = false
+            for newKind in [InstrumentKind.battery, InstrumentKind.map] {
+                if !presentKinds.contains(newKind) {
+                    parsed = parsed.adding(newKind)
+                    migrated = true
+                }
+            }
+            if migrated {
+                // Persist the migration once so we don't keep re-appending.
+                panelLayoutRaw = parsed.toJSON()
+            }
+            return parsed
+        }
+        set {
+            panelLayoutRaw = newValue.toJSON()
+        }
+    }
 
     /// Typed view of the stored toolbar order. Unknown values are skipped.
     var toolbarItems: [ToolbarItemKind] {
