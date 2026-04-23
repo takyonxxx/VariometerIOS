@@ -122,16 +122,14 @@ final class CompetitionTask: ObservableObject, Codable {
 
     /// Optimized task distance: sum of great-circle distances between consecutive
     /// turnpoints. Simplified — real comp scoring also reduces by cylinder radii
-    /// (optimised route through the cylinders), but for pilot-facing display
-    /// this is close enough and clearer.
+    /// Total optimum-route task distance in meters. Matches the "opt"
+    /// figure shown for the last turnpoint in the task list — i.e. it's
+    /// the sum of all per-leg optimum distances using the same rules
+    /// (radial difference for coincident centers, perimeter-to-
+    /// perimeter otherwise). This is what competition scoring uses.
     var totalDistanceM: Double {
         guard turnpoints.count >= 2 else { return 0 }
-        var total = 0.0
-        for i in 0..<(turnpoints.count - 1) {
-            total += Self.haversine(turnpoints[i].coordinate,
-                                     turnpoints[i+1].coordinate)
-        }
-        return total
+        return cumulativeOptimumDistanceTo(tpIndex: turnpoints.count - 1)
     }
 
     // MARK: - Task progress
@@ -399,6 +397,56 @@ final class CompetitionTask: ObservableObject, Codable {
         turnpoints.firstIndex(where: { $0.id == tp.id }) ?? -1
     }
 
+    /// Cumulative optimum-route distance from TAKEOFF up to (and
+    /// including) the turnpoint at `tpIndex`, in meters. Used for the
+    /// task total — a stable, GPS-independent number pinned to the
+    /// task definition. Live pilot-relative display uses
+    /// `cumulativeOptimumDistanceFromPilot` instead.
+    ///
+    /// Each leg's optimum distance is:
+    ///   - If the two TPs share the same center → `|r₁ − r₂|` (the
+    ///     pilot moves radially between the two cylinder edges; e.g.
+    ///     entering a 5 km cylinder from a 10 km cylinder means flying
+    ///     5 km inward along the shared radial)
+    ///   - Otherwise → `max(0, haversine − r₁ − r₂)` (straight-line
+    ///     distance between cylinder centers minus the two radii)
+    ///
+    /// Returns 0 for tpIndex 0 (takeoff — start of task).
+    func cumulativeOptimumDistanceTo(tpIndex: Int) -> Double {
+        guard tpIndex > 0, tpIndex < turnpoints.count else { return 0 }
+        var total = 0.0
+        for i in 1...tpIndex {
+            total += legOptimumDistance(fromIndex: i - 1, toIndex: i)
+        }
+        return total
+    }
+
+    /// Optimum flight distance for the single leg between two adjacent
+    /// turnpoints. See `cumulativeOptimumDistanceTo` for the logic.
+    ///
+    /// Special case: when the origin TP is the TAKEOFF (index 0), we
+    /// treat it as a point rather than a cylinder. The takeoff is the
+    /// pilot's physical launch site, not a gate they have to cross —
+    /// the task distance is measured from the takeoff point to the
+    /// first gate's edge. This matches Flyskyhy / XCTrack scoring.
+    private func legOptimumDistance(fromIndex i: Int, toIndex j: Int) -> Double {
+        guard i >= 0, j < turnpoints.count else { return 0 }
+        let a = turnpoints[i]
+        let b = turnpoints[j]
+
+        // TAKEOFF is the pilot's launch point, not a cylinder they
+        // cross — flyskyhy/XCTrack convention. Model it as a zero-
+        // radius anchor so both concentric and separate-center formulas
+        // pick up the full distance to the next TP's edge.
+        let aR = (i == 0 && a.type == .takeoff) ? 0 : a.radiusM
+
+        let d = Self.haversine(a.coordinate, b.coordinate)
+        if d < 5 {
+            return abs(aR - b.radiusM)
+        }
+        return max(0, d - aR - b.radiusM)
+    }
+
     /// Optimal tangent-route distance from turnpoint at `tpIndex` (its
     /// center) through all subsequent TPs to goal. Used by the stable
     /// branch of distanceToGoal when the pilot is near the next TP.
@@ -443,17 +491,25 @@ final class CompetitionTask: ObservableObject, Codable {
         return (br + 360).truncatingRemainder(dividingBy: 360)
     }
 
+    /// Great-circle distance between two coordinates in meters.
+    ///
+    /// Uses `CLLocation.distance(from:)` which is implemented against
+    /// the **WGS-84 ellipsoid** — the same datum GPS hardware reports
+    /// in, and the same datum every competition scoring system uses
+    /// (Flyskyhy, XCTrack, Airtribune, CIVL scoring). This matters at
+    /// competition scale: a spherical haversine with R=6371000 drifts
+    /// ~0.1–0.3% at mid-latitudes, i.e. 10–30 m over a 10 km leg and
+    /// up to 200 m over a 100 km XC task — enough to disagree with
+    /// Flyskyhy's numbers on the second decimal of each leg.
+    ///
+    /// The name "haversine" is kept for source-level compatibility
+    /// with the many call sites that predate this change; the function
+    /// is now a thin wrapper over CoreLocation.
     static func haversine(_ a: CLLocationCoordinate2D,
                           _ b: CLLocationCoordinate2D) -> Double {
-        let R = 6371000.0
-        let lat1 = a.latitude * .pi / 180
-        let lat2 = b.latitude * .pi / 180
-        let dLat = (b.latitude - a.latitude) * .pi / 180
-        let dLon = (b.longitude - a.longitude) * .pi / 180
-        let sa = sin(dLat/2)
-        let sb = sin(dLon/2)
-        let h = sa*sa + cos(lat1)*cos(lat2)*sb*sb
-        return 2 * R * asin(min(1, sqrt(h)))
+        let la = CLLocation(latitude: a.latitude, longitude: a.longitude)
+        let lb = CLLocation(latitude: b.latitude, longitude: b.longitude)
+        return la.distance(from: lb)
     }
 
     // MARK: - Persistence

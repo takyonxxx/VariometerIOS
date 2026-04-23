@@ -125,7 +125,13 @@ struct CompetitionTaskView: View {
                             .foregroundColor(.secondary)
                     }
                     ForEach(Array(task.turnpoints.enumerated()), id: \.element.id) { idx, tp in
-                        TurnpointRow(index: idx + 1, turnpoint: tp)
+                        // Cumulative task distance from TAKEOFF up to
+                        // this TP — sabit, GPS'ten bağımsız. Flyskyhy
+                        // "Route" list convention: each row shows how
+                        // far this TP sits along the planned course.
+                        TurnpointRow(index: idx + 1,
+                                     turnpoint: tp,
+                                     cumulativeM: task.cumulativeOptimumDistanceTo(tpIndex: idx))
                             .contentShape(Rectangle())
                             .onTapGesture { editingTurnpoint = tp }
                     }
@@ -310,6 +316,10 @@ private struct TaskQRShareView: View {
 private struct TurnpointRow: View {
     let index: Int
     let turnpoint: Turnpoint
+    /// Cumulative optimum-route distance from task start to THIS TP,
+    /// in meters. Pass 0 for the first (takeoff) row. The list callsite
+    /// computes this once using `task.cumulativeOptimumDistanceTo`.
+    let cumulativeM: Double
 
     var typeColor: Color {
         switch turnpoint.type {
@@ -319,6 +329,18 @@ private struct TurnpointRow: View {
         case .ess:     return Color(red: 1.0, green: 0.65, blue: 0.3)
         case .goal:    return .red
         }
+    }
+
+    /// Pretty-print the cumulative distance from task start. Meters
+    /// when < 1 km, otherwise km with one decimal. Hidden for the
+    /// takeoff row (always 0 — redundant to show).
+    private var cumulativeText: String? {
+        if index == 1 { return nil }
+        if cumulativeM < 1 { return "0 m" }
+        if cumulativeM < 1000 {
+            return String(format: "%.0f m", cumulativeM)
+        }
+        return String(format: "%.1f km", cumulativeM / 1000)
     }
 
     var body: some View {
@@ -361,6 +383,21 @@ private struct TurnpointRow: View {
             }
 
             Spacer()
+
+            // Cumulative optimum distance to this TP from task start.
+            // Hidden on the takeoff row (always 0 — redundant).
+            if let text = cumulativeText {
+                VStack(alignment: .trailing, spacing: 1) {
+                    Text(text)
+                        .font(.system(size: 13, weight: .bold, design: .rounded))
+                        .foregroundColor(.cyan)
+                        .monospacedDigit()
+                    Text("opt")
+                        .font(.system(size: 8, weight: .medium))
+                        .foregroundColor(.secondary)
+                }
+            }
+
             Image(systemName: "chevron.right")
                 .foregroundColor(.gray.opacity(0.5))
                 .font(.system(size: 12))
