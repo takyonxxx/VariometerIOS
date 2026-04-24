@@ -146,6 +146,18 @@ final class AppSettings: ObservableObject {
     @AppStorage("showMapBackground")  var showMapBackground: Bool = false
     @AppStorage("backgroundTheme")    var backgroundThemeRaw: String = BackgroundTheme.nightAviation.rawValue
 
+    /// QR sharing format. When false (default), generated QR codes use
+    /// the `xctsk://<base64>` URL form — iOS Camera recognises it as a
+    /// link and offers to open the QR in Vario TB (or any other
+    /// xctsk-handler app). When true, the QR is the standard
+    /// XCTrack `XCTSK:<json>` text — not a URL, so iOS Camera doesn't
+    /// trigger an "open with" sheet; the pilot must scan the QR from
+    /// inside whichever flight app they want to import into. The text
+    /// form is preferred when sharing with apps whose URL handlers
+    /// register as default and override Vario TB's, so the pilot can
+    /// always pick the destination manually.
+    @AppStorage("qrSchemeStandard")   var qrSchemeStandard: Bool = false
+
     /// Comma-separated raw values of visible toolbar items in order.
     /// Use the `toolbarItems` computed property to read/write as typed.
     @AppStorage("toolbarItemsOrder") var toolbarItemsOrderRaw: String =

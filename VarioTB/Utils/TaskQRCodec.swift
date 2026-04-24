@@ -21,29 +21,34 @@ enum TaskQRCodec {
     /// Generate a UIImage QR code containing the given task in XCTrack v2
     /// format (polyline-encoded, compact — same format Flyskyhy produces).
     /// Cross-compatible with XCTrack Android, Flyskyhy iOS, SeeYou Navigator.
-    static func generateQR(for task: CompetitionTask, size: CGFloat = 300) -> UIImage? {
-        // We emit the QR as an `xctsk://<url-safe-base64-payload>` URL.
-        //
-        // Why this format:
-        //   - `xctsk` is the standard XCTrack/Flyskyhy URL scheme.
-        //     Both apps register a handler for it, so iOS Camera
-        //     recognises the QR as a URL and offers an "Open with…"
-        //     sheet listing every app that claims xctsk — currently
-        //     Vario TB plus any other XCTrack-compatible app the
-        //     pilot has installed (Flyskyhy, XCTrack itself, etc).
-        //     The pilot picks which one to import into.
-        //   - The body is an XCTrack v2 JSON payload (turnpoints with
-        //     polyline-encoded "z", SSS time gates, goal deadline) —
-        //     the same content other apps already know how to parse.
-        //   - Base64 with URL-safe character substitutions keeps the
-        //     payload intact across URL parsers that would otherwise
-        //     percent-encode `+`, `/`, `=` differently.
+    /// Build a QR image for `task`. The QR's data depends on
+    /// `useStandardFormat`:
+    ///
+    ///   - `false` (default) → `xctsk://<url-safe-base64>` URL.
+    ///     iOS Camera recognises this as a link and offers an
+    ///     "Open in <app>" action; whichever app the user installed
+    ///     last that claims `xctsk://` typically wins.
+    ///
+    ///   - `true` → standard XCTrack `XCTSK:<v2-json>` text. NOT a
+    ///     URL — iOS Camera shows the raw text and offers no app
+    ///     handler. Pilot must scan from inside whichever flight app
+    ///     they want to import into. Useful when sharing with pilots
+    ///     who use Flyskyhy / XCTrack and want to choose explicitly.
+    static func generateQR(for task: CompetitionTask,
+                            size: CGFloat = 300,
+                            useStandardFormat: Bool = false) -> UIImage? {
         let inner = encodeXCTrackV2(task: task)
-        let b64 = Data(inner.utf8).base64EncodedString()
-            .replacingOccurrences(of: "+", with: "-")
-            .replacingOccurrences(of: "/", with: "_")
-            .replacingOccurrences(of: "=", with: "")
-        let payload = "xctsk://" + b64
+        let payload: String
+        if useStandardFormat {
+            // Plain XCTrack text format. Non-URL — not auto-handled.
+            payload = inner
+        } else {
+            let b64 = Data(inner.utf8).base64EncodedString()
+                .replacingOccurrences(of: "+", with: "-")
+                .replacingOccurrences(of: "/", with: "_")
+                .replacingOccurrences(of: "=", with: "")
+            payload = "xctsk://" + b64
+        }
         guard let data = payload.data(using: .utf8) else { return nil }
 
         let filter = CIFilter.qrCodeGenerator()
