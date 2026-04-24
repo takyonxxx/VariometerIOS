@@ -21,11 +21,77 @@ final class ChimePlayer {
     /// Subsequent calls while one chime is still playing layer on top —
     /// pilots tagging back-to-back TPs get overlapping chimes, which
     /// sounds fine and confirms both reaches happened.
+    ///
+    /// Uses bundled `reach_chime.wav` (a short classic alarm chirp) —
+    /// more urgent and recognisable than a synthesized arpeggio.
+    /// Falls back to a C5-E5-G5 synth tone if the asset is missing.
     func playReachChime() {
         queue.async { [weak self] in
-            self?.playSequence(frequencies: [523.25, 659.25, 783.99],  // C5, E5, G5
-                               noteDurationS: 0.12,
-                               noteGapS: 0.03)
+            guard let self = self else { return }
+            if let url = Bundle.main.url(forResource: "reach_chime",
+                                          withExtension: "wav"),
+               let player = try? AVAudioPlayer(contentsOf: url) {
+                player.volume = 0.9
+                player.prepareToPlay()
+                player.play()
+                DispatchQueue.main.async { [weak self] in
+                    self?.players.append(player)
+                    DispatchQueue.main.asyncAfter(
+                        deadline: .now() + player.duration + 0.3) {
+                        self?.players.removeAll { $0 === player }
+                    }
+                }
+                return
+            }
+            // Fallback synth chime
+            self.playSequence(frequencies: [523.25, 659.25, 783.99],
+                              noteDurationS: 0.12,
+                              noteGapS: 0.03,
+                              volume: 0.8)
+        }
+    }
+
+    /// Loud, attention-grabbing alarm for task start gate opening and
+    /// task deadline. Plays a pre-recorded facility-alarm WAV file
+    /// bundled with the app — much more urgent than a synthesized
+    /// beep pattern. The pilot may be mid-flight with wind noise, so
+    /// we want a siren-like sound that cuts through.
+    ///
+    /// Falls back to a synthesized pattern if the asset is missing
+    /// (shouldn't happen in shipped builds, but makes the code robust
+    /// during refactors that touch Copy Bundle Resources).
+    func playTaskAlarm() {
+        queue.async { [weak self] in
+            guard let self = self else { return }
+            if let url = Bundle.main.url(forResource: "task_alarm",
+                                          withExtension: "wav"),
+               let player = try? AVAudioPlayer(contentsOf: url) {
+                player.volume = 1.0
+                player.prepareToPlay()
+                player.play()
+                DispatchQueue.main.async { [weak self] in
+                    self?.players.append(player)
+                    // Retain for the clip's full duration + tail.
+                    DispatchQueue.main.asyncAfter(
+                        deadline: .now() + player.duration + 0.5) {
+                        self?.players.removeAll { $0 === player }
+                    }
+                }
+                return
+            }
+            // Fallback synthesized alarm
+            let pattern: [Double] = [
+                880.0, 698.46,
+                880.0, 698.46,
+                880.0, 698.46,
+                880.0, 698.46,
+                880.0, 698.46,
+                880.0, 698.46,
+            ]
+            self.playSequence(frequencies: pattern,
+                              noteDurationS: 0.18,
+                              noteGapS: 0.05,
+                              volume: 1.0)
         }
     }
 
@@ -34,7 +100,8 @@ final class ChimePlayer {
     /// until playback finishes to keep ARC from freeing it mid-sound.
     private func playSequence(frequencies: [Double],
                               noteDurationS: Double,
-                              noteGapS: Double) {
+                              noteGapS: Double,
+                              volume: Float = 0.8) {
         let totalS = Double(frequencies.count) * (noteDurationS + noteGapS)
         let sampleCount = Int(totalS * sampleRate)
         var samples = [Int16](repeating: 0, count: sampleCount)
@@ -59,7 +126,7 @@ final class ChimePlayer {
         // can parse them without any file I/O.
         let data = makeWAV(samples: samples, sampleRate: Int(sampleRate))
         guard let player = try? AVAudioPlayer(data: data) else { return }
-        player.volume = 0.8
+        player.volume = volume
         player.prepareToPlay()
         player.play()
         // Keep the player alive for the duration. AVAudioPlayer stops

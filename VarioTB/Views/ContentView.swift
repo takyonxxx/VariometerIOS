@@ -208,6 +208,48 @@ struct ContentView: View {
             }
             lastSeenTaskTPCount = newCount
         }
+        // Task start gate — fires exactly once per task when the
+        // wall-clock crosses taskStartTime. Plays the reach chime
+        // (same audio cue used when tagging a turnpoint, so the pilot
+        // recognises "something competition-relevant just happened")
+        // and a success haptic. taskPhase is also published — UI
+        // surfaces (e.g. tinted start-time card) can react to the
+        // phase directly without listening to this event.
+        .onChange(of: task.startGateOpenEvent) { token in
+            guard token != nil else { return }
+            ChimePlayer.shared.playTaskAlarm()
+            // Three success haptics spaced 300ms apart — noticeable
+            // through glove and harness when flying.
+            DispatchQueue.main.async {
+                let gen = UINotificationFeedbackGenerator()
+                gen.notificationOccurred(.success)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    gen.notificationOccurred(.success)
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                    gen.notificationOccurred(.success)
+                }
+            }
+        }
+        // Deadline — fires once when Date() crosses taskDeadline.
+        // Uses a warning haptic rather than success to signal "race
+        // closed". We reuse the same alarm sound; the distinct haptic
+        // pattern is enough for the pilot to tell them apart in the
+        // air without needing a dedicated sound asset.
+        .onChange(of: task.deadlineReachedEvent) { token in
+            guard token != nil else { return }
+            ChimePlayer.shared.playTaskAlarm()
+            DispatchQueue.main.async {
+                let gen = UINotificationFeedbackGenerator()
+                gen.notificationOccurred(.warning)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    gen.notificationOccurred(.warning)
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                    gen.notificationOccurred(.warning)
+                }
+            }
+        }
         .sheet(isPresented: $showSettings) {
             SettingsView(settings: settings, audio: audio, liveTracker: liveTracker)
         }
@@ -256,8 +298,18 @@ struct ContentView: View {
             vario.update(rawVerticalSpeed: locationMgr.verticalSpeed,
                          coordinate: locationMgr.coordinate,
                          altitude: locationMgr.fusedAltitude)
-            wind.update(groundSpeedKmh: locationMgr.groundSpeedKmh,
-                        courseDeg: locationMgr.courseDeg)
+            // Wind estimation needs the pilot's actual GPS ground
+            // track (which sweeps a full circle while thermalling),
+            // not the compass-backed courseDeg (which stays fixed if
+            // the phone is strapped to the harness). gpsCourseDeg is
+            // updated from raw CLLocation.course on every fix, and
+            // by the simulator during sim runs. When it's still -1
+            // (no track yet) we skip the update — WindEstimator
+            // needs meaningful direction data to fit a sinusoid.
+            if locationMgr.gpsCourseDeg >= 0 {
+                wind.update(groundSpeedKmh: locationMgr.groundSpeedKmh,
+                            courseDeg: locationMgr.gpsCourseDeg)
+            }
             audio.updateVario(vario.filteredVario)
 
             // Feed live tracker (samples at full tick rate; uploads batched @ 30s)
@@ -268,8 +320,26 @@ struct ContentView: View {
 
             // Task progress: tick reached turnpoints so next-point
             // navigation / course indicator updates in real time.
+            // When the simulator is running we bypass timing gates —
+            // the user is testing the task geometry, not racing the
+            // wall clock. Real flight uses the normal start-gate /
+            // deadline checks.
             if !task.turnpoints.isEmpty, let pilot = locationMgr.coordinate {
-                task.updateProgress(pilot: pilot)
+                task.updateProgress(pilot: pilot,
+                                     ignoreTiming: simulator.isRunning)
+            }
+
+            // Drive the task clock independently of GPS. Start-gate
+            // and deadline alarms must fire even while the pilot is
+            // still on takeoff waiting — they have no fix, no
+            // movement, and updateProgress won't be called. The
+            // updateTaskPhase call below is idempotent; once the event
+            // UUID has been posted for this phase transition, the
+            // *Notified flag prevents duplicates on later ticks. We
+            // still skip this while the simulator is running so sim
+            // test flights don't trigger a real-world race alarm.
+            if !task.turnpoints.isEmpty, !simulator.isRunning {
+                task.updateTaskPhase()
             }
 
             // Auto-start real flight recording when:

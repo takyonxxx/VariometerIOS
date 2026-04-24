@@ -852,7 +852,15 @@ private struct CourseCard: View {
 
     var body: some View {
         GeometryReader { geo in
-            let arrowSize = min(geo.size.width, geo.size.height) * 0.75
+            // Arrow sizing. The arrow is a solid shape that occupies
+            // its full frame — tip at top center (y=0), base corners
+            // at bottom corners. When rotated 180° the tip swings to
+            // the bottom edge of the frame. If we make the frame
+            // exactly as wide/tall as the card, the rotated tip kisses
+            // the card's rounded-rect border. Multiply by 0.55 to
+            // leave a clear margin on all sides — enough that the
+            // arrow never touches the frame at any rotation angle.
+            let arrowSize = min(geo.size.width, geo.size.height) * 0.55
 
             ZStack {
                 RoundedRectangle(cornerRadius: 10)
@@ -902,7 +910,10 @@ private struct TrueHeadingCard: View {
         GeometryReader { geo in
             let scale = min(geo.size.width / 120.0, geo.size.height / 110.0)
             let degSize = max(9.0, min(16.0, 10.0 * scale))
-            let arrowSize = min(geo.size.width, geo.size.height) * 0.70
+            // Leave consistent margin so the rotated arrow tip never
+            // touches the card's rounded-rect border (see CourseCard
+            // for the geometry explanation).
+            let arrowSize = min(geo.size.width, geo.size.height) * 0.55
 
             ZStack(alignment: .bottomTrailing) {
                 RoundedRectangle(cornerRadius: 10)

@@ -24,6 +24,8 @@
 		7F77EB612C6F48C38C7237EA /* AudioEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7452A3AE96041149D0594F7 /* AudioEngine.swift */; };
 		832B35A0701C44FC97A0490D /* QRScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 814C4D461BC748269F6D90DD /* QRScannerView.swift */; };
 		89316BD084304171B94B04E6 /* WaypointsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 992177F0107F4A90A7CE3EEA /* WaypointsView.swift */; };
+		9C15AC8A2F9BCC020044CB67 /* task_alarm.wav in Resources */ = {isa = PBXBuildFile; fileRef = 9C15AC892F9BCC020044CB67 /* task_alarm.wav */; };
+		9C15AC8C2F9BCF8D0044CB67 /* reach_chime.wav in Resources */ = {isa = PBXBuildFile; fileRef = 9C15AC8B2F9BCF8D0044CB67 /* reach_chime.wav */; };
 		9CD0604E2F9A1ED9009415D7 /* FlightSimulator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CD0604D2F9A1ED9009415D7 /* FlightSimulator.swift */; };
 		9CD060522F9A2E47009415D7 /* IGCRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CD060502F9A2E47009415D7 /* IGCRecorder.swift */; };
 		9CD060532F9A2E47009415D7 /* WaypointExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CD060512F9A2E47009415D7 /* WaypointExporter.swift */; };
@@ -73,6 +75,8 @@
 		87ECC1D80DC5415D96025E75 /* BottomTelemetry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BottomTelemetry.swift; sourceTree = "<group>"; };
 		8DD2A853C992464DAB2D6A8C /* WindEstimator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindEstimator.swift; sourceTree = "<group>"; };
 		992177F0107F4A90A7CE3EEA /* WaypointsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WaypointsView.swift; sourceTree = "<group>"; };
+		9C15AC892F9BCC020044CB67 /* task_alarm.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = task_alarm.wav; sourceTree = "<group>"; };
+		9C15AC8B2F9BCF8D0044CB67 /* reach_chime.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = reach_chime.wav; sourceTree = "<group>"; };
 		9CD0604D2F9A1ED9009415D7 /* FlightSimulator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlightSimulator.swift; sourceTree = "<group>"; };
 		9CD0604F2F9A2E47009415D7 /* FlightRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlightRecorder.swift; sourceTree = "<group>"; };
 		9CD060502F9A2E47009415D7 /* IGCRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IGCRecorder.swift; sourceTree = "<group>"; };
@@ -149,6 +153,8 @@
 		548D5FDED5224CE691194FE9 /* Audio */ = {
 			isa = PBXGroup;
 			children = (
+				9C15AC8B2F9BCF8D0044CB67 /* reach_chime.wav */,
+				9C15AC892F9BCC020044CB67 /* task_alarm.wav */,
 				9CD0607C2F9AC309009415D7 /* ChimePlayer.swift */,
 				C7452A3AE96041149D0594F7 /* AudioEngine.swift */,
 			);
@@ -288,6 +294,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				E74D078FF93C434898B239C8 /* Assets.xcassets in Resources */,
+				9C15AC8C2F9BCF8D0044CB67 /* reach_chime.wav in Resources */,
+				9C15AC8A2F9BCC020044CB67 /* task_alarm.wav in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

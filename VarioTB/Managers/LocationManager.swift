@@ -14,6 +14,17 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
     @Published var fusedAltitude: Double = 0        // m (preferred for display)
     @Published var groundSpeedKmh: Double = 0       // km/h
     @Published var courseDeg: Double = 0            // ° true (course over ground)
+    /// Raw GPS course-over-ground, independent of the compass selection
+    /// logic. Always tracks `CLLocation.course` when available (and
+    /// speed is high enough to have a meaningful track). Used by the
+    /// WindEstimator, which needs the pilot's actual direction of
+    /// travel (dairesel track while thermalling) — if we gave it the
+    /// compass-backed `courseDeg`, wind couldn't be computed because
+    /// a stationary phone in a harness keeps the compass fixed even
+    /// as the pilot circles a thermal.
+    ///
+    /// -1 when no valid GPS track is available yet.
+    @Published var gpsCourseDeg: Double = -1
     @Published var headingDeg: Double = 0            // ° magnetic heading from compass
     /// Compass accuracy in degrees. Negative = compass data invalid
     /// (compass disabled, uncalibrated, or hardware unavailable).
@@ -178,6 +189,21 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
            !(headingAccuracyDeg > 0 && headingAccuracyDeg <= 30) {
             courseDeg = Self.smoothAngle(current: courseDeg, target: loc.course, alpha: 0.2)
         }
+        // gpsCourseDeg is ALWAYS updated from the raw GPS track
+        // (when valid and the pilot is moving fast enough for the
+        // track to be meaningful). This bypasses the compass logic
+        // above so WindEstimator can see the circular track a pilot
+        // makes when thermalling, even if the phone's compass stays
+        // pointed the same way in the harness the whole time.
+        if loc.course >= 0, loc.speed > 1.0 {
+            if gpsCourseDeg < 0 {
+                gpsCourseDeg = loc.course
+            } else {
+                gpsCourseDeg = Self.smoothAngle(current: gpsCourseDeg,
+                                                 target: loc.course,
+                                                 alpha: 0.3)
+            }
+        }
     }
 
     func locationManager(_ manager: CLLocationManager, didUpdateHeading newHeading: CLHeading) {
@@ -242,8 +268,14 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
         // physical phone and have the direction arrow respond, exactly
         // as it would in a real flight. The synthetic course/heading
         // the sim would otherwise inject are discarded.
-        _ = courseDeg    // silence "unused parameter" warning
         _ = headingDeg
+        // gpsCourseDeg IS populated from sim data — the WindEstimator
+        // needs a circular ground track to compute wind while the
+        // pilot thermals, and during sim the only source of that track
+        // is the simulator's synthesized course. UI direction values
+        // (courseDeg / bestHeadingDeg) continue to come from the
+        // real compass.
+        self.gpsCourseDeg = courseDeg
         self.verticalSpeed = verticalSpeed
         self.horizontalAccuracy = 3.0
         self.hasFix = true
@@ -259,6 +291,7 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
         fusedAltitude = 0
         groundSpeedKmh = 0
         courseDeg = 0
+        gpsCourseDeg = -1
         verticalSpeed = 0
         horizontalAccuracy = -1
         hasFix = false

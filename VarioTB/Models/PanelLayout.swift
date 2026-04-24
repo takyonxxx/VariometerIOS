@@ -159,12 +159,14 @@ struct PanelLayout: Codable {
 
     /// Factory competition layout — matches the reference screenshot:
     ///   - Vario (left) + Course (right) at the top, both 2×2.
-    ///   - Two rows of 2×1 readouts: speed+alt, then distToNext+distToGoal.
-    ///   - A full-width map fills the middle-and-bottom.
-    ///   - Wind dial + thermal radar are overlaid on top of the map at
-    ///     its upper region. The two-pass zIndex in PanelView guarantees
-    ///     map cards render underneath non-map cards, so the wind and
-    ///     radar naturally float over the satellite imagery.
+    ///   - Ground speed (left) + altitude (right), each 1.5 rows — same
+    ///     split as free-flight so the big readouts share weight
+    ///     equally.
+    ///   - DistToNext (SSS label) + DistToGoal, also 1.5 rows each,
+    ///     stacked below the speed/alt pair.
+    ///   - Full-width map from row 5 down, with wind+radar overlaying
+    ///     the upper region (two-pass zIndex in PanelView keeps the
+    ///     map underneath).
     ///   - Clock + battery on the final row.
     static var competitionLayout: PanelLayout {
         let cols = 4, rows = 15
@@ -172,20 +174,25 @@ struct PanelLayout: Codable {
         func y(_ r: Int) -> CGFloat { CGFloat(r) / CGFloat(rows) }
         func w(_ s: Int) -> CGFloat { CGFloat(s) / CGFloat(cols) }
         func h(_ s: Int) -> CGFloat { CGFloat(s) / CGFloat(rows) }
+        // 1.5-row constants for the mid-band readouts. y positions are
+        // cumulative so speed/alt sit at row 2, dist cards at row 3.5.
+        let halfRowH: CGFloat = 1.5 / CGFloat(rows)
+        let speedRowY: CGFloat = 2.0 / CGFloat(rows)
+        let distRowY: CGFloat  = 3.5 / CGFloat(rows)
         return PanelLayout(cards: [
-            PanelCard(kind: .vario,        x: x(0), y: y(0),  w: w(2), h: h(2)),
-            PanelCard(kind: .course,       x: x(2), y: y(0),  w: w(2), h: h(2)),
-            PanelCard(kind: .groundSpeed,  x: x(0), y: y(2),  w: w(2), h: h(1)),
-            PanelCard(kind: .altitude,     x: x(2), y: y(2),  w: w(2), h: h(1)),
-            PanelCard(kind: .distToNext,   x: x(0), y: y(3),  w: w(2), h: h(1)),
-            PanelCard(kind: .distToGoal,   x: x(2), y: y(3),  w: w(2), h: h(1)),
-            // Full-width map from row 4 down to row 13. Everything
-            // below (wind+radar) draws ON TOP because they're non-map.
-            PanelCard(kind: .map,          x: x(0), y: y(4),  w: w(4), h: h(9)),
-            PanelCard(kind: .windDial,     x: x(0), y: y(4),  w: w(2), h: h(3)),
-            PanelCard(kind: .thermalRadar, x: x(2), y: y(4),  w: w(2), h: h(3)),
-            PanelCard(kind: .clock,        x: x(0), y: y(13), w: w(2), h: h(1)),
-            PanelCard(kind: .battery,      x: x(2), y: y(13), w: w(2), h: h(1)),
+            PanelCard(kind: .vario,        x: x(0), y: y(0),      w: w(2), h: h(2)),
+            PanelCard(kind: .course,       x: x(2), y: y(0),      w: w(2), h: h(2)),
+            PanelCard(kind: .groundSpeed,  x: x(0), y: speedRowY, w: w(2), h: halfRowH),
+            PanelCard(kind: .altitude,     x: x(2), y: speedRowY, w: w(2), h: halfRowH),
+            PanelCard(kind: .distToNext,   x: x(0), y: distRowY,  w: w(2), h: halfRowH),
+            PanelCard(kind: .distToGoal,   x: x(2), y: distRowY,  w: w(2), h: halfRowH),
+            // Map spans from row 5 down to row 13 (8 rows tall).
+            // Wind + radar overlay the upper region.
+            PanelCard(kind: .map,          x: x(0), y: y(5),      w: w(4), h: h(8)),
+            PanelCard(kind: .windDial,     x: x(0), y: y(5),      w: w(2), h: h(3)),
+            PanelCard(kind: .thermalRadar, x: x(2), y: y(5),      w: w(2), h: h(3)),
+            PanelCard(kind: .clock,        x: x(0), y: y(13),     w: w(2), h: h(1)),
+            PanelCard(kind: .battery,      x: x(2), y: y(13),     w: w(2), h: h(1)),
         ])
     }
 

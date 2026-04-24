@@ -78,9 +78,23 @@ final class CompetitionTask: ObservableObject, Codable {
     @Published var name: String = "Task"
     @Published var turnpoints: [Turnpoint] = []
     /// When the task window opens (task start — no flight before this)
-    @Published var taskStartTime: Date? = nil
+    @Published var taskStartTime: Date? = nil {
+        didSet {
+            // Pilot just changed the start time — the previous start
+            // event (if any) fired for a different clock. Re-arm so
+            // when the new start time arrives the alarm fires again.
+            // Without this, you can set start to T+1min, miss the
+            // alarm while testing, then re-set to T+2min and get no
+            // alarm because `startGateNotified` is stuck at true.
+            startGateNotified = false
+        }
+    }
     /// When the goal must be reached by (optional cut-off)
-    @Published var taskDeadline: Date? = nil
+    @Published var taskDeadline: Date? = nil {
+        didSet {
+            deadlineNotified = false
+        }
+    }
 
     enum CodingKeys: String, CodingKey {
         case name, turnpoints, taskStartTime, taskDeadline
@@ -148,6 +162,33 @@ final class CompetitionTask: ObservableObject, Codable {
     /// won't change until the next reach).
     @Published var lastReachEvent: UUID? = nil
 
+    /// Task-clock phases the UI can display (e.g. tint the start card
+    /// red if we're still in .beforeStart). The phase is derived from
+    /// `Date()` vs taskStartTime / taskDeadline on every updateProgress
+    /// tick, so it auto-advances without a separate timer.
+    enum TaskPhase {
+        case noTiming          // no start/deadline set — always open
+        case beforeStart       // Date() < taskStartTime — SSS gated
+        case running           // start <= Date() < deadline
+        case overtime          // Date() >= taskDeadline — race closed
+    }
+    @Published var taskPhase: TaskPhase = .noTiming
+
+    /// Event tokens posted when a timing boundary is crossed. Views
+    /// observe these and play sounds / haptics / banners exactly once
+    /// per event (driven by UUID identity — a new UUID means "fresh
+    /// event, fire feedback again"). All nil until the corresponding
+    /// moment arrives.
+    @Published var startGateOpenEvent: UUID? = nil
+    @Published var deadlineReachedEvent: UUID? = nil
+
+    /// Internal: true once we've already posted a start-gate-open
+    /// event for the current taskStartTime. Reset when the start time
+    /// is changed or task progress is reset.
+    private var startGateNotified: Bool = false
+    /// Same for the deadline.
+    private var deadlineNotified: Bool = false
+
     /// Clear all reach-state so the task can be flown again from
     /// scratch — same object, no re-import. Called when the simulator
     /// stops so a subsequent sim run (or real flight) starts with a
@@ -157,6 +198,81 @@ final class CompetitionTask: ObservableObject, Codable {
         reachedTPIds.removeAll()
         lastReachEvent = nil
         nextTPExitedSinceLastReach = true
+        // Timing notifications: allow start-gate and deadline events
+        // to fire again on the next run. (If the previous flight
+        // already passed the deadline, they fire immediately — not
+        // useful, so we check `taskPhase` in updateProgress before
+        // posting.)
+        startGateNotified = false
+        deadlineNotified = false
+    }
+
+    /// Re-derive `taskPhase` from the current wall-clock time and post
+    /// one-shot events when we cross the start or deadline boundary.
+    /// Called from `updateProgress`, so it ticks at the same rate as
+    /// GPS updates (~1 Hz). Also exposed as a standalone tick so the
+    /// UI can drive it from a timer — start-gate alarms must fire
+    /// even on the ground before the pilot takes off / before the
+    /// first GPS fix arrives. The `*Notified` flags prevent the
+    /// "start gate opened" event from firing a dozen times a second
+    /// while the pilot is still hovering near the SSS cylinder — we
+    /// emit exactly one UUID per transition.
+    func updateTaskPhase() {
+        let now = Date()
+
+        // If the deadline sits BEFORE the start time, the pilot has
+        // misconfigured the task (or the deadline is a stale value
+        // left over from a previous import — common when testing
+        // starts with a today+1min clock). Treat the deadline as
+        // missing in that case so phase progression still works:
+        //   .beforeStart → .running → (no overtime, no deadline)
+        // Without this guard, as soon as now crosses the start time
+        // the check "now >= deadline" also passes (deadline was
+        // already in the past), phase jumps straight to .overtime,
+        // and the start-gate event fires silently because the
+        // condition "taskPhase == .running" is never observed.
+        let effectiveDeadline: Date? = {
+            guard let deadline = taskDeadline else { return nil }
+            if let start = taskStartTime, deadline <= start {
+                return nil
+            }
+            return deadline
+        }()
+
+        let newPhase: TaskPhase
+        if let start = taskStartTime {
+            if now < start {
+                newPhase = .beforeStart
+            } else if let deadline = effectiveDeadline, now >= deadline {
+                newPhase = .overtime
+            } else {
+                newPhase = .running
+            }
+        } else if let deadline = effectiveDeadline, now >= deadline {
+            newPhase = .overtime
+        } else {
+            newPhase = .noTiming
+        }
+        if newPhase != taskPhase {
+            print("[TaskPhase] \(taskPhase) -> \(newPhase) at \(now) (start=\(String(describing: taskStartTime)), deadline=\(String(describing: taskDeadline)), effective deadline=\(String(describing: effectiveDeadline)))")
+            taskPhase = newPhase
+        }
+
+        // Start gate crossing — once, when phase goes .beforeStart → .running
+        if !startGateNotified,
+           taskStartTime != nil,
+           taskPhase == .running {
+            print("[TaskPhase] START GATE OPEN event posted")
+            startGateNotified = true
+            startGateOpenEvent = UUID()
+        }
+
+        // Deadline crossing — once, when we first see .overtime
+        if !deadlineNotified, taskPhase == .overtime {
+            print("[TaskPhase] DEADLINE event posted")
+            deadlineNotified = true
+            deadlineReachedEvent = UUID()
+        }
     }
 
     /// Internal gate for the exit-then-entry reach rule. True when the
@@ -210,7 +326,18 @@ final class CompetitionTask: ObservableObject, Codable {
     /// first fix. For concentric-lap legs it forces the pilot to
     /// actually leave the cylinder and come back before the reach
     /// counts, which is what "do 4 laps" means geometrically.
-    func updateProgress(pilot: CLLocationCoordinate2D) {
+    func updateProgress(pilot: CLLocationCoordinate2D,
+                         ignoreTiming: Bool = false) {
+        // Update the task clock phase first. This runs every fix and
+        // is the one place we translate "is it start/deadline time
+        // yet?" into a published state the UI can observe.
+        // When called from the simulator we skip phase updates — the
+        // sim is a geometry playground, and firing start-gate /
+        // deadline alarms during a test flight is just noise.
+        if !ignoreTiming {
+            updateTaskPhase()
+        }
+
         // Find the first unreached turnpoint — that's the one the pilot
         // is currently navigating to.
         guard let nextIdx = turnpoints.firstIndex(where: {
@@ -230,6 +357,18 @@ final class CompetitionTask: ObservableObject, Codable {
         //     then-entry gate still applies so concentric laps don't
         //     collapse.
         if next.type == .sss {
+            // Start gate: if a task start time is set and we haven't
+            // reached it yet, block SSS reach. The race hasn't begun;
+            // exiting the start cylinder early shouldn't count.
+            // Pilots can still loiter inside the SSS cylinder while
+            // waiting — the reach just won't fire until the clock
+            // permits. Simulator runs ignore this — the sim is for
+            // testing route geometry, not race-clock behaviour.
+            if !ignoreTiming,
+               taskStartTime != nil,
+               taskPhase == .beforeStart {
+                return
+            }
             // SSS exit reach: fire the moment the pilot clears the
             // boundary outward (d > radius + tolerance). No "exit
             // first then enter" gate is needed because the event IS
