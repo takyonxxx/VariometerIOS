@@ -52,6 +52,34 @@
 		<key>UIApplicationSupportsMultipleScenes</key>
 		<false/>
 	</dict>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<!-- xctsk: is the XCTrack/Flyskyhy compatible scheme for
+			     competition task QR codes. Claiming it here lets iOS
+			     Camera offer "Open in Vario TB" when the pilot scans a
+			     task QR with the system camera. Flyskyhy also claims
+			     this scheme — whichever app the user picks from the
+			     iOS "Open with" sheet wins. -->
+			<key>CFBundleURLName</key>
+			<string>com.tbiliyor.VarioTB.xctsk</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>xctsk</string>
+			</array>
+		</dict>
+		<dict>
+			<!-- variotb: our own private scheme, for cases where we
+			     need a deep link that unambiguously resolves to this
+			     app (no competition from other flight apps). -->
+			<key>CFBundleURLName</key>
+			<string>com.tbiliyor.VarioTB.variotb</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>variotb</string>
+			</array>
+		</dict>
+	</array>
 	<key>UIRequiredDeviceCapabilities</key>
 	<array>
 		<string>armv7</string>

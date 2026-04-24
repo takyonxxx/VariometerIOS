@@ -36,6 +36,12 @@ struct ContentView: View {
     /// cards snap back as you try to move them.
     @State private var panelEditMode: Bool = false
 
+    /// Deep-link task payload drained from DeepLink.pendingPayload or
+    /// the taskImportNotification. When non-nil, ContentView opens the
+    /// task editor with this payload queued for import. Cleared once
+    /// the editor finishes handling the import.
+    @State private var deepLinkTaskPayload: String? = nil
+
     init() {
         let s = AppSettings()
         _settings = StateObject(wrappedValue: s)
@@ -98,19 +104,29 @@ struct ContentView: View {
                             .padding(.bottom, 8)
                     }
                 } else {
-                    PanelView(settings: settings,
-                              vario: vario,
-                              locationMgr: locationMgr,
-                              wind: wind,
-                              fai: fai,
-                              task: task,
-                              fitTriangleToken: fitTriangleToken,
-                              fitTaskToken: fitTaskToken,
-                              autoFollow: $autoFollow,
-                              editMode: $panelEditMode)
-                        .padding(.horizontal, 8)
-                        .padding(.top, 4)
-                        .padding(.bottom, 6)
+                    // Non-edit: the panel uses a fixed reference height
+                    // (PanelLayout.referenceHeight) so cards retain their
+                    // physical size across device sizes. Wrap in a
+                    // ScrollView with scroll disabled — contents don't
+                    // move, but anything below the viewport is still
+                    // reachable by long-pressing into edit mode first.
+                    // Most phones fit the full panel comfortably; this
+                    // is the safety net for the compact ones.
+                    ScrollView(showsIndicators: false) {
+                        PanelView(settings: settings,
+                                  vario: vario,
+                                  locationMgr: locationMgr,
+                                  wind: wind,
+                                  fai: fai,
+                                  task: task,
+                                  fitTriangleToken: fitTriangleToken,
+                                  fitTaskToken: fitTaskToken,
+                                  autoFollow: $autoFollow,
+                                  editMode: $panelEditMode)
+                            .padding(.horizontal, 8)
+                            .padding(.top, 4)
+                            .padding(.bottom, 6)
+                    }
                 }
             }
         }
@@ -142,6 +158,24 @@ struct ContentView: View {
                     fitTaskToken = UUID()
                 }
             }
+            // Cold-launch deep link drain. If the app was opened from
+            // an xctsk:// URL, VarioTBApp's onOpenURL stashed the
+            // payload in DeepLink.pendingPayload before any view could
+            // observe a notification. Pick it up here on first mount.
+            if let pending = DeepLink.pendingPayload {
+                DeepLink.pendingPayload = nil
+                deepLinkTaskPayload = pending
+                showTaskEditor = true
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(
+                    for: DeepLink.taskImportNotification)) { note in
+            // Warm-launch deep link. App was already running when the
+            // URL arrived — present the task editor with the payload
+            // queued for import.
+            guard let payload = note.userInfo?["payload"] as? String else { return }
+            deepLinkTaskPayload = payload
+            showTaskEditor = true
         }
         .onChange(of: recorder.isRecording) { recording in
             // FAI triangle detector follows the recorder lifecycle
@@ -181,7 +215,9 @@ struct ContentView: View {
             FilesListView(recorder: recorder, isPresented: $showFilesList)
         }
         .sheet(isPresented: $showTaskEditor) {
-            CompetitionTaskView(task: task, isPresented: $showTaskEditor)
+            CompetitionTaskView(task: task,
+                                 isPresented: $showTaskEditor,
+                                 deepLinkPayload: $deepLinkTaskPayload)
         }
         .sheet(isPresented: $showWaypoints) {
             WaypointsView(task: task, isPresented: $showWaypoints)

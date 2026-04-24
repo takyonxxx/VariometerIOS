@@ -22,7 +22,28 @@ enum TaskQRCodec {
     /// format (polyline-encoded, compact — same format Flyskyhy produces).
     /// Cross-compatible with XCTrack Android, Flyskyhy iOS, SeeYou Navigator.
     static func generateQR(for task: CompetitionTask, size: CGFloat = 300) -> UIImage? {
-        let payload = encodeXCTrackV2(task: task)
+        // We wrap the XCTrack v2 payload in a `variotb://task?data=…`
+        // deep link URL. Two wins from this:
+        //
+        //   1. iOS Camera recognises the QR as a URL and offers
+        //      "Open in Vario TB" — no ambiguity with other flight
+        //      apps that also claim the shared `xctsk:` scheme
+        //      (Flyskyhy, XCTrack, etc.). variotb is ours alone.
+        //   2. Our own scanner peels the wrapper off and decodes the
+        //      inner XCTrack payload, so the same QR round-trips
+        //      cleanly within the app.
+        //
+        // The inner payload is base64-encoded so URL special characters
+        // (: / ?) inside the XCTrack JSON don't confuse URL parsing.
+        let inner = encodeXCTrackV2(task: task)
+        let b64 = Data(inner.utf8).base64EncodedString()
+            // URL-safe base64: swap chars that need percent-encoding
+            // so the payload survives round-tripping through iOS
+            // Camera / Safari / third-party URL parsers.
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+        let payload = "variotb://task?data=" + b64
         guard let data = payload.data(using: .utf8) else { return nil }
 
         let filter = CIFilter.qrCodeGenerator()
@@ -116,6 +137,26 @@ enum TaskQRCodec {
     ///   - Bare JSON without prefix (some implementations)
     static func decodeTask(from scanned: String) -> ImportedTask? {
         var payload = scanned.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // Unwrap variotb://task?data=<url-safe-base64(XCTSK:…)>
+        //
+        // This is the format we emit from generateQR(). iOS Camera
+        // recognises it as a URL → offers "Open in Vario TB" → app
+        // launches with the URL → VarioTBApp's onOpenURL extracts the
+        // payload and hands it back to this function via the same
+        // path as an in-app QR scan. We also see this format when the
+        // pilot scans our own QR through the in-app scanner.
+        if payload.lowercased().hasPrefix("variotb://task?data=") {
+            let b64 = String(payload.dropFirst("variotb://task?data=".count))
+                .replacingOccurrences(of: "-", with: "+")
+                .replacingOccurrences(of: "_", with: "/")
+            // Re-pad to a multiple of 4 for strict base64 decoders.
+            let padded = b64 + String(repeating: "=", count: (4 - b64.count % 4) % 4)
+            if let decoded = Data(base64Encoded: padded),
+               let inner = String(data: decoded, encoding: .utf8) {
+                payload = inner
+            }
+        }
 
         // XCTSKZ: zlib+base64 decompression
         if payload.hasPrefix("XCTSKZ:") {

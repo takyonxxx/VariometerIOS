@@ -34,11 +34,15 @@ enum ToolbarItemKind: String, CaseIterable, Identifiable, Codable {
         }
     }
 
-    /// Default order shown to users who haven't customized. The map is
-    /// NOT in the toolbar — it's a panel card the pilot manages from
-    /// edit mode (long-press) like any other card.
+    /// Default order shown to users who haven't customized the
+    /// toolbar. Matches the reference screenshot: waypoints first
+    /// (pre-flight task building), then Task (for the currently
+    /// selected task QR), then Share (outbound to other pilots),
+    /// then Simulator (testing), then Settings (configuration). The
+    /// map is NOT in the toolbar — it's a panel card the pilot
+    /// manages from edit mode (long-press) like any other card.
     static var defaultOrder: [ToolbarItemKind] {
-        [.simulator, .waypoints, .task, .share, .settings]
+        [.waypoints, .task, .share, .simulator, .settings]
     }
 }
 
@@ -116,6 +120,16 @@ final class AppSettings: ObservableObject {
     // Damper is now fixed at 1 (bypass) — removed from UI per design.
     // Regression window handles smoothing.
     var damperLevel: Int { 1 }
+
+    /// Set by VarioTBApp's `onOpenURL` handler when the user opens a
+    /// task deep link (from iOS Camera, Safari, or another app's share
+    /// sheet). Observed by ContentView — when this flips from nil to
+    /// a non-nil string, ContentView presents the Competition Task
+    /// view with the payload pre-filled for import.
+    ///
+    /// Not persisted (no @AppStorage) — deep links are one-shot; we
+    /// clear the value as soon as the task sheet has consumed it.
+    @Published var pendingDeepLinkTaskPayload: String? = nil
 
     @AppStorage("soundEnabled")       var soundEnabled: Bool = true
     @AppStorage("soundVolume")        var soundVolume: Double = 0.8

@@ -148,6 +148,17 @@ final class CompetitionTask: ObservableObject, Codable {
     /// won't change until the next reach).
     @Published var lastReachEvent: UUID? = nil
 
+    /// Clear all reach-state so the task can be flown again from
+    /// scratch — same object, no re-import. Called when the simulator
+    /// stops so a subsequent sim run (or real flight) starts with a
+    /// clean slate instead of carrying the previous flight's progress
+    /// into the distance/bearing calculations.
+    func resetProgress() {
+        reachedTPIds.removeAll()
+        lastReachEvent = nil
+        nextTPExitedSinceLastReach = true
+    }
+
     /// Internal gate for the exit-then-entry reach rule. True when the
     /// pilot has been verified outside the NEXT turnpoint's cylinder
     /// since the last reach (or since task load). Flips back to false

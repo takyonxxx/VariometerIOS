@@ -35,154 +35,147 @@ struct PanelView: View {
     @State private var dragOffset: CGSize = .zero
     @State private var resizingCardID: UUID? = nil
     @State private var resizeDelta: CGSize = .zero
+    /// Offset applied to a card's origin while resizing — currently zero
+    /// (bottom-right handle anchors the top-left), but kept as state so
+    /// other corner handles can be added later without changing the
+    /// drawing code.
+    @State private var resizeOffset: CGSize = .zero
 
     var body: some View {
-        let layout = settings.panelLayout
-        let hSpacing: CGFloat = 5
-        let vSpacing: CGFloat = 5
-        let rowH: CGFloat = 52
-        let rowCount = totalRows(layout: layout)
-        let totalH = rowH * CGFloat(max(1, rowCount)) +
-                     vSpacing * CGFloat(max(0, rowCount - 1))
+        let panelH = PanelLayout.referenceHeight
 
         return GeometryReader { geo in
-            let cols = PanelLayout.columns
-            let colW = max(1, (geo.size.width - CGFloat(cols - 1) * hSpacing) / CGFloat(cols))
+            let panelW = geo.size.width
 
             ZStack(alignment: .topLeading) {
                 if editMode {
-                    gridBackground(colW: colW, rowH: rowH,
-                                   hSpacing: hSpacing, vSpacing: vSpacing,
-                                   rowCount: rowCount + 2)
+                    editBackdrop(panelW: panelW, panelH: panelH)
                 }
 
-                ForEach(layout.cards) { card in
-                    let (x, y) = position(card, colW: colW, rowH: rowH,
-                                          hSpacing: hSpacing, vSpacing: vSpacing)
-                    let (w, h) = size(card, colW: colW, rowH: rowH,
-                                      hSpacing: hSpacing, vSpacing: vSpacing)
-                    // Live-preview resize delta
-                    let previewW: CGFloat = (resizingCardID == card.id)
-                        ? max(colW, w + resizeDelta.width) : w
-                    let previewH: CGFloat = (resizingCardID == card.id)
-                        ? max(rowH, h + resizeDelta.height) : h
-
-                    cardView(for: card)
-                        .frame(width: previewW, height: previewH)
-                        .overlay(editOverlay(for: card, w: previewW, h: previewH,
-                                              colW: colW, rowH: rowH,
-                                              hSpacing: hSpacing, vSpacing: vSpacing))
-                        .offset(x: x, y: y)
-                        .offset(draggingCardID == card.id ? dragOffset : .zero)
-                        .gesture(
-                            editMode ? dragGesture(for: card, colW: colW, rowH: rowH,
-                                                    hSpacing: hSpacing, vSpacing: vSpacing)
-                                     : nil
-                        )
-                        .animation(.spring(response: 0.25, dampingFraction: 0.85),
-                                   value: layout.cards.map(\.id))
-                        .zIndex(draggingCardID == card.id || resizingCardID == card.id ? 10 : 0)
+                // Two-pass render so map cards sit UNDERNEATH all
+                // other cards. Pass 1: maps (zIndex 0). Pass 2:
+                // everything else (zIndex 10). The actively-dragged
+                // or resized card jumps to zIndex 100 so its preview
+                // stays on top of neighbours.
+                ForEach(settings.panelLayout.cards) { card in
+                    if card.kind == .map {
+                        cardContainer(for: card, panelW: panelW, panelH: panelH)
+                            .zIndex(zIndex(for: card, base: 0))
+                    }
+                }
+                ForEach(settings.panelLayout.cards) { card in
+                    if card.kind != .map {
+                        cardContainer(for: card, panelW: panelW, panelH: panelH)
+                            .zIndex(zIndex(for: card, base: 10))
+                    }
                 }
             }
-            .frame(width: geo.size.width, height: totalH,
-                   alignment: .topLeading)
+            .frame(width: panelW, height: panelH, alignment: .topLeading)
             .onLongPressGesture(minimumDuration: 0.6) {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    editMode.toggle()
-                }
+                withAnimation(.easeInOut(duration: 0.2)) { editMode.toggle() }
                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             }
         }
-        .frame(height: totalH)
+        .frame(height: panelH)
     }
 
-    // MARK: - Positioning
+    // MARK: - Card container (positions, sizes, applies edit affordances)
 
-    private func position(_ card: PanelCard,
-                          colW: CGFloat, rowH: CGFloat,
-                          hSpacing: CGFloat, vSpacing: CGFloat) -> (CGFloat, CGFloat) {
-        (CGFloat(card.col) * (colW + hSpacing),
-         CGFloat(card.row) * (rowH + vSpacing))
+    private func zIndex(for card: PanelCard, base: Double) -> Double {
+        if draggingCardID == card.id || resizingCardID == card.id { return 100 }
+        return base
     }
 
-    private func size(_ card: PanelCard,
-                      colW: CGFloat, rowH: CGFloat,
-                      hSpacing: CGFloat, vSpacing: CGFloat) -> (CGFloat, CGFloat) {
-        let w = CGFloat(card.width) * colW + CGFloat(max(0, card.width - 1)) * hSpacing
-        let h = CGFloat(card.height) * rowH + CGFloat(max(0, card.height - 1)) * vSpacing
-        return (w, h)
+    @ViewBuilder
+    private func cardContainer(for card: PanelCard,
+                                panelW: CGFloat, panelH: CGFloat) -> some View {
+        let baseX = card.x * panelW
+        let baseY = card.y * panelH
+        let baseW = card.w * panelW
+        let baseH = card.h * panelH
+
+        let dragging = draggingCardID == card.id
+        let resizing = resizingCardID == card.id
+        let frameW: CGFloat = resizing ? max(40, baseW + resizeDelta.width) : baseW
+        let frameH: CGFloat = resizing ? max(40, baseH + resizeDelta.height) : baseH
+        let offsetX: CGFloat = dragging ? dragOffset.width : 0
+        let offsetY: CGFloat = dragging ? dragOffset.height : 0
+
+        cardView(for: card)
+            .frame(width: frameW, height: frameH)
+            .overlay(editOverlay(for: card, panelW: panelW, panelH: panelH))
+            .offset(x: baseX + offsetX, y: baseY + offsetY)
+            .gesture(editMode ? dragGesture(for: card, panelW: panelW, panelH: panelH) : nil)
+            .animation(.spring(response: 0.25, dampingFraction: 0.85),
+                       value: settings.panelLayout.cards.map(\.id))
     }
 
-    private func totalRows(layout: PanelLayout) -> Int {
-        layout.cards.map { $0.row + $0.height }.max() ?? 1
+    // MARK: - Edit backdrop (cosmetic only — no snap grid)
+
+    private func editBackdrop(panelW: CGFloat, panelH: CGFloat) -> some View {
+        // Faint wash so the edit surface reads as "different mode"
+        // without imposing a grid visually. Positioning is entirely
+        // free-form now.
+        Rectangle()
+            .fill(Color.cyan.opacity(0.04))
+            .frame(width: panelW, height: panelH)
     }
 
-    // MARK: - Grid background
-
-    private func gridBackground(colW: CGFloat, rowH: CGFloat,
-                                hSpacing: CGFloat, vSpacing: CGFloat,
-                                rowCount: Int) -> some View {
-        ZStack(alignment: .topLeading) {
-            ForEach(0..<rowCount, id: \.self) { row in
-                ForEach(0..<PanelLayout.columns, id: \.self) { col in
-                    RoundedRectangle(cornerRadius: 6)
-                        .stroke(Color.cyan.opacity(0.12), style: StrokeStyle(
-                            lineWidth: 1, dash: [3, 3]))
-                        .frame(width: colW, height: rowH)
-                        .offset(x: CGFloat(col) * (colW + hSpacing),
-                                y: CGFloat(row) * (rowH + vSpacing))
-                }
-            }
-        }
-    }
-
-    // MARK: - Edit overlay: delete badge + resize handle
+    // MARK: - Edit overlay: delete + resize handle
 
     @ViewBuilder
     private func editOverlay(for card: PanelCard,
-                             w: CGFloat, h: CGFloat,
-                             colW: CGFloat, rowH: CGFloat,
-                             hSpacing: CGFloat, vSpacing: CGFloat) -> some View {
+                              panelW: CGFloat, panelH: CGFloat) -> some View {
         if editMode {
-            ZStack(alignment: .topTrailing) {
+            ZStack {
                 RoundedRectangle(cornerRadius: 10)
-                    .stroke(Color.cyan.opacity(0.7), lineWidth: 1.5)
+                    .stroke(Color.cyan.opacity(0.75), lineWidth: 1.5)
                     .allowsHitTesting(false)
 
-                // Delete (×) in top-right
-                Button {
-                    var layout = settings.panelLayout
-                    layout = layout.removing(card.id)
-                    settings.panelLayout = layout
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 22))
-                        .foregroundColor(.white)
-                        .background(Circle().fill(Color.red))
+                // Delete (×) — top-right, 44pt tap target
+                VStack {
+                    HStack {
+                        Spacer()
+                        Button {
+                            settings.panelLayout = settings.panelLayout.removing(card.id)
+                        } label: {
+                            ZStack {
+                                Circle().fill(Color.red).frame(width: 26, height: 26)
+                                Image(systemName: "xmark")
+                                    .font(.system(size: 13, weight: .bold))
+                                    .foregroundColor(.white)
+                            }
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
+                        }
+                        .offset(x: 10, y: -10)
+                    }
+                    Spacer()
                 }
-                .offset(x: 8, y: -8)
 
-                // Resize handle in bottom-right (styled like image editors)
-                VStack { Spacer() ; HStack { Spacer() ; resizeHandle(for: card,
-                                                                      colW: colW, rowH: rowH,
-                                                                      hSpacing: hSpacing,
-                                                                      vSpacing: vSpacing) } }
+                // Resize handle — bottom-right, 48pt tap target
+                VStack {
+                    Spacer()
+                    HStack {
+                        Spacer()
+                        resizeHandle(for: card, panelW: panelW, panelH: panelH)
+                    }
+                }
             }
         }
     }
 
     private func resizeHandle(for card: PanelCard,
-                              colW: CGFloat, rowH: CGFloat,
-                              hSpacing: CGFloat, vSpacing: CGFloat) -> some View {
+                              panelW: CGFloat, panelH: CGFloat) -> some View {
         ZStack {
-            Circle()
-                .fill(Color.cyan)
-                .frame(width: 28, height: 28)
+            Circle().fill(Color.cyan).frame(width: 32, height: 32)
             Image(systemName: "arrow.up.left.and.arrow.down.right")
-                .font(.system(size: 12, weight: .heavy))
+                .font(.system(size: 13, weight: .heavy))
                 .foregroundColor(.black)
         }
-        .offset(x: 6, y: 6)
+        .frame(width: 48, height: 48)
+        .contentShape(Rectangle())
+        .offset(x: 8, y: 8)
         .gesture(
             DragGesture()
                 .onChanged { value in
@@ -190,96 +183,144 @@ struct PanelView: View {
                     resizeDelta = value.translation
                 }
                 .onEnded { value in
-                    let dCol = Int((value.translation.width / (colW + hSpacing)).rounded())
-                    let dRow = Int((value.translation.height / (rowH + vSpacing)).rounded())
-                    var newW = card.width + dCol
-                    var newH = card.height + dRow
-                    newW = max(1, min(PanelLayout.columns - card.col, newW))
-                    newH = max(1, min(20, newH))
-
-                    // Collision check: only commit resize if the larger
-                    // rectangle wouldn't overlap any other card. If it
-                    // would, shrink back until it fits — try decreasing
-                    // width first, then height, until a valid size is
-                    // found (or we fall back to the original size).
-                    let layout = settings.panelLayout
-                    var candidateW = newW
-                    var candidateH = newH
-                    while candidateW > card.width || candidateH > card.height {
-                        if !layout.wouldCollide(excluding: card.id,
-                                                col: card.col, row: card.row,
-                                                width: candidateW,
-                                                height: candidateH) {
-                            break
-                        }
-                        // Shrink the bigger delta first
-                        if candidateW - card.width >= candidateH - card.height,
-                           candidateW > 1 {
-                            candidateW -= 1
-                        } else if candidateH > 1 {
-                            candidateH -= 1
-                        } else {
-                            candidateW = card.width
-                            candidateH = card.height
-                            break
-                        }
-                    }
-
-                    var nextLayout = layout
-                    if let idx = nextLayout.cards.firstIndex(where: { $0.id == card.id }) {
-                        nextLayout.cards[idx].width = candidateW
-                        nextLayout.cards[idx].height = candidateH
-                        settings.panelLayout = nextLayout
-                    }
-                    if candidateW != newW || candidateH != newH {
-                        UINotificationFeedbackGenerator().notificationOccurred(.warning)
-                    }
+                    let dw = value.translation.width / panelW
+                    let dh = value.translation.height / panelH
+                    let rawW = card.w + dw
+                    let rawH = card.h + dh
+                    let (snappedW, snappedH) = snapSize(
+                        cardID: card.id, x: card.x, y: card.y,
+                        rawW: rawW, rawH: rawH)
+                    settings.panelLayout = settings.panelLayout.updating(
+                        card.id,
+                        w: snappedW,
+                        h: snappedH)
                     resizingCardID = nil
                     resizeDelta = .zero
                 }
         )
     }
 
-    // MARK: - Drag gesture
+    // MARK: - Drag gesture (free pixel movement, no grid snap)
 
     private func dragGesture(for card: PanelCard,
-                             colW: CGFloat, rowH: CGFloat,
-                             hSpacing: CGFloat, vSpacing: CGFloat) -> some Gesture {
+                              panelW: CGFloat, panelH: CGFloat) -> some Gesture {
         DragGesture()
             .onChanged { value in
                 draggingCardID = card.id
                 dragOffset = value.translation
             }
             .onEnded { value in
-                let dCol = Int((value.translation.width / (colW + hSpacing)).rounded())
-                let dRow = Int((value.translation.height / (rowH + vSpacing)).rounded())
-                var newCol = card.col + dCol
-                var newRow = card.row + dRow
-                newCol = max(0, min(PanelLayout.columns - card.width, newCol))
-                newRow = max(0, newRow)
-
-                // If the drop target's top-left slot is occupied by a
-                // DIFFERENT card (and same-size), swap them directly —
-                // this is what the pilot expects when dragging onto an
-                // existing card. The target ends up where `card` started,
-                // and `card` takes the target's slot.
-                //
-                // If the slot is empty OR the target is a different
-                // size, fall back to placing() which cascade-pushes to
-                // make room.
-                let targetID = settings.panelLayout.cardAt(col: newCol, row: newRow)
-                if let targetID = targetID,
-                   targetID != card.id,
-                   let swapped = settings.panelLayout.swapping(card.id, with: targetID) {
-                    settings.panelLayout = swapped
-                } else {
-                    settings.panelLayout = settings.panelLayout.placing(
-                        card.id, col: newCol, row: newRow)
-                }
-
+                let dx = value.translation.width / panelW
+                let dy = value.translation.height / panelH
+                let rawX = card.x + dx
+                let rawY = card.y + dy
+                let (snappedX, snappedY) = snapPosition(
+                    cardID: card.id, w: card.w, h: card.h,
+                    rawX: rawX, rawY: rawY)
+                settings.panelLayout = settings.panelLayout.updating(
+                    card.id,
+                    x: snappedX,
+                    y: snappedY)
                 draggingCardID = nil
                 dragOffset = .zero
             }
+    }
+
+    // MARK: - Snapping
+    //
+    // When the pilot drops a card near another card's edge or near the
+    // panel's left/right boundary, nudge it to perfect alignment. This
+    // absorbs the small hand-jitter that makes free-positioning layouts
+    // look crooked without committing to a rigid grid.
+
+    /// Snap thresholds in fraction-of-panel units. "near" means within
+    /// this distance from a target line.
+    private static let snapThresholdX: CGFloat = 0.03   // ~3% of panel width
+    private static let snapThresholdY: CGFloat = 0.02   // ~2% of reference height
+
+    /// Snap both axes. Candidates are:
+    ///   - Panel left edge (0) and right edge (1 - cardW)
+    ///   - Panel center line (0.5 - cardW/2)
+    ///   - Other cards' left (card.x), right (card.x + card.w)
+    ///   - Other cards' top (card.y), bottom (card.y + card.h)
+    /// The card also snaps to match another card's y or h so aligned
+    /// rows stay aligned after drags.
+    private func snapPosition(cardID: UUID,
+                              w: CGFloat, h: CGFloat,
+                              rawX: CGFloat, rawY: CGFloat)
+    -> (CGFloat, CGFloat) {
+        let others = settings.panelLayout.cards.filter { $0.id != cardID }
+
+        // X-axis targets: both for the card's LEFT edge
+        var xTargets: [CGFloat] = [0, 1 - w, 0.5 - w / 2]
+        for o in others {
+            xTargets.append(o.x)              // align left edges
+            xTargets.append(o.x + o.w - w)    // align right edges
+            xTargets.append(o.x + o.w)        // sit flush to the right of o
+            xTargets.append(o.x - w)          // sit flush to the left of o
+        }
+
+        // Y-axis targets
+        var yTargets: [CGFloat] = [0]
+        for o in others {
+            yTargets.append(o.y)              // align top edges
+            yTargets.append(o.y + o.h - h)    // align bottom edges
+            yTargets.append(o.y + o.h)        // sit directly below o
+            yTargets.append(o.y - h)          // sit directly above o
+        }
+
+        let snappedX = nearestWithin(rawX, targets: xTargets, threshold: Self.snapThresholdX)
+        let snappedY = nearestWithin(rawY, targets: yTargets, threshold: Self.snapThresholdY)
+        return (snappedX, snappedY)
+    }
+
+    /// Snap a resize operation. The handle is on the bottom-right, so
+    /// we snap the card's RIGHT edge (x + w) and BOTTOM edge (y + h) —
+    /// this gives the natural "drag to hit the next card's edge"
+    /// behavior. Candidates mirror snapPosition's targets.
+    private func snapSize(cardID: UUID,
+                          x: CGFloat, y: CGFloat,
+                          rawW: CGFloat, rawH: CGFloat)
+    -> (CGFloat, CGFloat) {
+        let others = settings.panelLayout.cards.filter { $0.id != cardID }
+
+        // Right-edge candidates (the card's x + w should equal one)
+        var rightTargets: [CGFloat] = [1, 0.5]
+        for o in others {
+            rightTargets.append(o.x)            // card's right flush with o's left
+            rightTargets.append(o.x + o.w)      // card's right flush with o's right
+        }
+        // Bottom-edge candidates
+        var bottomTargets: [CGFloat] = []
+        for o in others {
+            bottomTargets.append(o.y)
+            bottomTargets.append(o.y + o.h)
+        }
+
+        let desiredRight = x + rawW
+        let desiredBottom = y + rawH
+        let snappedRight = nearestWithin(desiredRight, targets: rightTargets,
+                                          threshold: Self.snapThresholdX)
+        let snappedBottom = nearestWithin(desiredBottom, targets: bottomTargets,
+                                           threshold: Self.snapThresholdY)
+        return (snappedRight - x, snappedBottom - y)
+    }
+
+    /// Pick whichever target is closest to `v` and within `threshold`.
+    /// If no target qualifies, return `v` unchanged.
+    private func nearestWithin(_ v: CGFloat,
+                                targets: [CGFloat],
+                                threshold: CGFloat) -> CGFloat {
+        var best: CGFloat? = nil
+        var bestDist: CGFloat = threshold
+        for t in targets {
+            let d = abs(t - v)
+            if d <= bestDist {
+                bestDist = d
+                best = t
+            }
+        }
+        return best ?? v
     }
 
     // MARK: - Edit footer
@@ -455,6 +496,17 @@ struct PanelView: View {
         return idx + 1   // 1-based for display
     }
 
+    /// Name of the next unreached turnpoint — shown directly on the
+    /// dist-to-next card label instead of "SONRAKİ TP N". Keeps the
+    /// readout grounded in the task's own naming (e.g. "TP-10km-a",
+    /// "SSS", "ESS") so the pilot doesn't have to mentally map
+    /// numbers back to TP identities mid-flight. Returns nil when no
+    /// pilot fix or no unreached TP is available.
+    private var nextTPName: String? {
+        guard let p = locationMgr.coordinate else { return nil }
+        return task.nextTurnpoint(pilot: p)?.name
+    }
+
     private var distanceToGoal: Double? {
         guard let p = locationMgr.coordinate else { return nil }
         guard !task.turnpoints.isEmpty else { return nil }
@@ -522,16 +574,14 @@ struct PanelView: View {
         case .battery:
             BatteryCard()
         case .distToNext:
-            // Label shows the next TP's 1-based number so the pilot
-            // knows which turnpoint they're navigating to (e.g.
-            // "SONRAKİ TP 3"). Drops to plain "SONRAKİ TP" if for any
-            // reason we can't resolve the number.
-            let label: String = {
-                if let idx = nextTPIndex {
-                    return "SONRAKİ TP \(idx)"
-                }
-                return "SONRAKİ TP"
-            }()
+            // Label is the next unreached TP's name (e.g. "NW",
+            // "SSS", "ESS"). When there's no GPS fix yet or every TP
+            // is already tagged, fall back to an empty label rather
+            // than a generic "SONRAKİ TP" placeholder — that generic
+            // text confused the user by appearing briefly every time
+            // the sim stopped and the coordinate temporarily went nil
+            // before the card reset.
+            let label = nextTPName ?? ""
             DistanceCard(label: label,
                          meters: distanceToNextTP,
                          color: .cyan,

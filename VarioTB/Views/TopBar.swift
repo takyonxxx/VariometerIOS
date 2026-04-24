@@ -64,7 +64,17 @@ struct TopBar: View {
             Button {
                 if simulator.isRunning {
                     simulator.stop()
+                    // Clear task reach-state so the UI cards (next TP
+                    // distance, bearing arrow, cumulative distance)
+                    // don't keep showing stale values from the run we
+                    // just ended. Next sim run or real flight starts
+                    // fresh.
+                    task.resetProgress()
                 } else if hasTask {
+                    // Also reset before a fresh sim run so progress
+                    // from a previous session / partial run doesn't
+                    // leak into this one.
+                    task.resetProgress()
                     let waypoints: [FlightSimulator.TaskWaypoint] =
                         task.turnpoints.enumerated().map { (idx, tp) in
                             let isInterior = idx > 0 && idx < task.turnpoints.count - 1

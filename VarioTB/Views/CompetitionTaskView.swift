@@ -7,6 +7,11 @@ import CoreLocation
 struct CompetitionTaskView: View {
     @ObservedObject var task: CompetitionTask
     @Binding var isPresented: Bool
+    /// Deep-link payload queued by ContentView when the app is opened
+    /// via an xctsk:// URL. On appear we process this as if the pilot
+    /// had scanned a QR inside the app, then clear it so subsequent
+    /// openings of this sheet don't re-import.
+    var deepLinkPayload: Binding<String?>? = nil
     @ObservedObject private var language = LanguagePreference.shared
     @ObservedObject private var library: WaypointLibrary = .shared
 
@@ -226,6 +231,16 @@ struct CompetitionTaskView: View {
                 }
                 scanMessage = String(format: L10n.string(key), count)
                 showScanMessage = true
+            }
+            .onAppear {
+                // If ContentView queued a deep-link import, process it
+                // as though the pilot had just scanned this QR in-app.
+                // Binding write clears the payload so reopening the
+                // sheet later doesn't re-import.
+                if let payload = deepLinkPayload?.wrappedValue {
+                    deepLinkPayload?.wrappedValue = nil
+                    handleScannedCode(payload)
+                }
             }
         }
     }
