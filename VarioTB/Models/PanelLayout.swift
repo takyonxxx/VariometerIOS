@@ -7,6 +7,7 @@ import SwiftUI
 enum InstrumentKind: String, Codable, CaseIterable, Identifiable {
     case vario         = "vario"
     case altitude      = "altitude"
+    case maxAltitude   = "maxAltitude"      // session peak altitude
     case groundSpeed   = "groundSpeed"
     case course        = "course"           // smart: task-aware if task loaded
     case trueHeading   = "trueHeading"      // always physical GPS course
@@ -26,6 +27,7 @@ enum InstrumentKind: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .vario:         return "Vario"
         case .altitude:      return "Rakım"
+        case .maxAltitude:   return "Max Rakım"
         case .groundSpeed:   return "Yer Hızı"
         case .course:        return "Rota"
         case .trueHeading:   return "Yön (Gerçek)"
@@ -45,6 +47,7 @@ enum InstrumentKind: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .vario:         return "arrow.up.arrow.down"
         case .altitude:      return "mountain.2.fill"
+        case .maxAltitude:   return "arrow.up.to.line.compact"
         case .groundSpeed:   return "speedometer"
         case .course:        return "safari"
         case .trueHeading:   return "location.north.fill"
@@ -197,38 +200,135 @@ struct PanelLayout: Codable {
     }
 
     /// Free-flight layout — matches the reference screenshot:
-    ///   - Big vario top-left (2×3).
-    ///   - Altitude (top) + GroundSpeed (bottom) on the right, each
-    ///     exactly HALF the vario's height (1.5 rows each — specified
-    ///     as fractions rather than integer rows so they split evenly).
-    ///   - Full-width map fills the middle-and-bottom. WindDial (left)
-    ///     + ThermalRadar (right) overlay the upper region of the map
-    ///     (two-pass zIndex in PanelView puts the map underneath).
-    ///   - Clock + battery on the final row. No task cards.
+    ///   - Vario (sol) + Rakım (sağ) — first row, both 2×2.
+    ///   - Takeoff distance (sol) + Yer Hızı (sağ) — second row, both 2×1.
+    ///   - Map fills the middle-and-bottom, with WindDial (sol) +
+    ///     ThermalRadar (sağ) overlaying its upper region (two-pass
+    ///     zIndex in PanelView puts the map underneath).
+    ///   - Clock + battery on the final row. No task-related cards
+    ///     besides distToTakeoff (the only task-aware metric that
+    ///     stays meaningful in free flight too — distance back home).
     static var freeFlightLayout: PanelLayout {
         let cols = 4, rows = 15
         func x(_ c: Int) -> CGFloat { CGFloat(c) / CGFloat(cols) }
         func y(_ r: Int) -> CGFloat { CGFloat(r) / CGFloat(rows) }
         func w(_ s: Int) -> CGFloat { CGFloat(s) / CGFloat(cols) }
         func h(_ s: Int) -> CGFloat { CGFloat(s) / CGFloat(rows) }
-        // Altitude and groundSpeed split vario's height equally — they
-        // sit at rows 0 and 1.5 respectively, each 1.5 rows tall.
-        let halfRowH: CGFloat = 1.5 / CGFloat(rows)
-        let halfRowY: CGFloat = 1.5 / CGFloat(rows)
         return PanelLayout(cards: [
-            PanelCard(kind: .vario,        x: x(0), y: y(0),    w: w(2), h: h(3)),
-            PanelCard(kind: .altitude,     x: x(2), y: y(0),    w: w(2), h: halfRowH),
-            PanelCard(kind: .groundSpeed,  x: x(2), y: halfRowY, w: w(2), h: halfRowH),
-            // Map spans from row 3 down to row 13 (10 rows tall).
-            PanelCard(kind: .map,          x: x(0), y: y(3),  w: w(4), h: h(10)),
-            PanelCard(kind: .windDial,     x: x(0), y: y(3),  w: w(2), h: h(3)),
-            PanelCard(kind: .thermalRadar, x: x(2), y: y(3),  w: w(2), h: h(3)),
-            PanelCard(kind: .clock,        x: x(0), y: y(13), w: w(2), h: h(1)),
-            PanelCard(kind: .battery,      x: x(2), y: y(13), w: w(2), h: h(1)),
+            PanelCard(kind: .vario,         x: x(0), y: y(0),  w: w(2), h: h(2)),
+            PanelCard(kind: .altitude,      x: x(2), y: y(0),  w: w(2), h: h(2)),
+            PanelCard(kind: .distToTakeoff, x: x(0), y: y(2),  w: w(2), h: h(2)),
+            PanelCard(kind: .groundSpeed,   x: x(2), y: y(2),  w: w(2), h: h(2)),
+            // Map spans rows 4..13 (9 rows). Wind + radar overlay
+            // the upper region.
+            PanelCard(kind: .map,           x: x(0), y: y(4),  w: w(4), h: h(9)),
+            PanelCard(kind: .windDial,      x: x(0), y: y(4),  w: w(2), h: h(3)),
+            PanelCard(kind: .thermalRadar,  x: x(2), y: y(4),  w: w(2), h: h(3)),
+            PanelCard(kind: .clock,         x: x(0), y: y(13), w: w(2), h: h(1)),
+            PanelCard(kind: .battery,       x: x(2), y: y(13), w: w(2), h: h(1)),
         ])
     }
 
     static var defaultLayout: PanelLayout { competitionLayout }
+
+    /// Build a landscape arrangement for this layout. The pilot's
+    /// portrait order is preserved 1:1 — landscape is purely a
+    /// re-flow of the same content into two columns:
+    ///
+    ///   - LEFT  half: every instrument card, in the SAME visual order
+    ///                 as portrait (sorted by y, then x). Cards are
+    ///                 packed into rows of 2 so no row wastes width
+    ///                 with a single item, except when an odd total
+    ///                 count leaves one trailing singleton.
+    ///   - RIGHT half: spatial widgets (map fills the full half,
+    ///                 wind dial + thermal radar overlay its top
+    ///                 region) — same arrangement as portrait.
+    ///
+    /// Cards the pilot doesn't have in their portrait layout simply
+    /// don't appear in landscape either.
+    func landscapeTransformed() -> PanelLayout {
+        // Spatial cards go to the right column — their roles (showing
+        // a 2D area) only make sense as widgets, not as readouts in a
+        // packed list.
+        let spatialKinds: Set<InstrumentKind> = [.map, .windDial, .thermalRadar]
+
+        // Everything else is an instrument readout for the left column.
+        // We sort by portrait y (then x) so the landscape order
+        // mirrors how the pilot already reads top-to-bottom in
+        // portrait. SwiftUI keeps stable identity through the id we
+        // re-emit unchanged.
+        let leftCards: [PanelCard] = cards
+            .filter { !spatialKinds.contains($0.kind) }
+            .sorted { lhs, rhs in
+                if abs(lhs.y - rhs.y) > 0.001 { return lhs.y < rhs.y }
+                return lhs.x < rhs.x
+            }
+
+        let mapCard = cards.first(where: { $0.kind == .map })
+        let windCard = cards.first(where: { $0.kind == .windDial })
+        let radarCard = cards.first(where: { $0.kind == .thermalRadar })
+
+        var out: [PanelCard] = []
+        let halfW: CGFloat = 0.5
+
+        // Pack instruments into rows of two. With an odd count we
+        // accept one trailing single-card row at the bottom rather
+        // than reorder. Each row gets equal vertical share — keeps
+        // every readout legible regardless of how many the pilot
+        // chose to display.
+        struct Row {
+            let cards: [PanelCard]
+        }
+        var rows: [Row] = []
+        var i = 0
+        while i < leftCards.count {
+            if i + 1 < leftCards.count {
+                rows.append(Row(cards: [leftCards[i], leftCards[i + 1]]))
+                i += 2
+            } else {
+                rows.append(Row(cards: [leftCards[i]]))
+                i += 1
+            }
+        }
+
+        let rowCount = max(1, rows.count)
+        let rowH: CGFloat = 1.0 / CGFloat(rowCount)
+        var cursorY: CGFloat = 0
+        for row in rows {
+            if row.cards.count == 1 {
+                let c = row.cards[0]
+                out.append(PanelCard(id: c.id, kind: c.kind,
+                                     x: 0, y: cursorY, w: halfW, h: rowH))
+            } else {
+                let cardW = halfW / 2.0
+                for (idx, c) in row.cards.enumerated() {
+                    out.append(PanelCard(id: c.id, kind: c.kind,
+                                         x: CGFloat(idx) * cardW,
+                                         y: cursorY,
+                                         w: cardW, h: rowH))
+                }
+            }
+            cursorY += rowH
+        }
+
+        // RIGHT half: map fills the whole side, overlays sit on top
+        // of its upper region — same layering as portrait thanks to
+        // PanelView's two-pass zIndex render.
+        if let m = mapCard {
+            out.append(PanelCard(id: m.id, kind: m.kind,
+                                 x: 0.5, y: 0, w: 0.5, h: 1.0))
+        }
+        if let w = windCard {
+            out.append(PanelCard(id: w.id, kind: w.kind,
+                                 x: 0.5,  y: 0, w: 0.25, h: 0.45))
+        }
+        if let r = radarCard {
+            out.append(PanelCard(id: r.id, kind: r.kind,
+                                 x: 0.75, y: 0, w: 0.25, h: 0.45))
+        }
+
+        return PanelLayout(cards: out)
+    }
 
     func removing(_ id: UUID) -> PanelLayout {
         PanelLayout(cards: cards.filter { $0.id != id })

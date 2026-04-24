@@ -12,6 +12,12 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
     @Published var gpsAltitude: Double = 0          // m (ellipsoidal from GPS)
     @Published var baroAltitude: Double = 0         // m (relative from barometer)
     @Published var fusedAltitude: Double = 0        // m (preferred for display)
+    /// Highest fusedAltitude observed since this session began (or
+    /// since the last reset). Updated monotonically — never decreases
+    /// while the app is running. Reset by `resetForSimulatorStop()`
+    /// and on a fresh launch (since this is not persisted). Used by
+    /// the Max Altitude card.
+    @Published var maxAltitude: Double = 0
     @Published var groundSpeedKmh: Double = 0       // km/h
     @Published var courseDeg: Double = 0            // ° true (course over ground)
     /// Raw GPS course-over-ground, independent of the compass selection
@@ -117,6 +123,12 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
             // Reset logic: if GPS drifts strongly, renormalize. Simple version below.
         } else {
             fusedAltitude = gpsAltitude
+        }
+        // Track the session's peak altitude. Only bump when we actually
+        // have a fix — without one, fusedAltitude can flap around 0 and
+        // maxAltitude would lock at the first noise spike.
+        if hasFix && fusedAltitude > maxAltitude {
+            maxAltitude = fusedAltitude
         }
     }
 
@@ -259,6 +271,10 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
         self.gpsAltitude = altitude
         self.baroAltitude = altitude
         self.fusedAltitude = altitude
+        // Track sim-mode peak altitude same as real flight.
+        if altitude > self.maxAltitude {
+            self.maxAltitude = altitude
+        }
         self.groundSpeedKmh = groundSpeedKmh
         // NOTE: courseDeg and headingDeg are deliberately NOT written
         // here. Both values continue to come from the real device
@@ -289,6 +305,7 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
         gpsAltitude = 0
         baroAltitude = 0
         fusedAltitude = 0
+        maxAltitude = 0
         groundSpeedKmh = 0
         courseDeg = 0
         gpsCourseDeg = -1

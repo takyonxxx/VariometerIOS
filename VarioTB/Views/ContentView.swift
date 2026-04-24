@@ -74,7 +74,14 @@ struct ContentView: View {
                 // reach cards below the fold to reposition them. Outside
                 // edit mode we skip the ScrollView entirely so the panel
                 // is a fixed layout (no accidental drift while flying).
-                if panelEditMode {
+                // Landscape detection: when the device is rotated, we
+                // skip the ScrollView entirely so PanelView's
+                // GeometryReader sees the real (height-bounded) area
+                // and can re-map the layout via landscapeTransformed().
+                GeometryReader { outerGeo in
+                    let isLandscape = outerGeo.size.width > outerGeo.size.height
+                    Group {
+                        if panelEditMode && !isLandscape {
                     // Grid goes inside a ScrollView so long layouts can be
                     // scrolled through during edit, but the reset/confirm
                     // footer sits OUTSIDE the scroll view as a fixed
@@ -95,6 +102,7 @@ struct ContentView: View {
                                       fitTaskToken: fitTaskToken,
                                       autoFollow: $autoFollow,
                                       editMode: $panelEditMode)
+                                .frame(height: PanelLayout.referenceHeight)
                                 .padding(.horizontal, 12)   // extra room for scroll indicator
                                 .padding(.top, 4)
                                 .padding(.bottom, 100)      // clear the fixed footer
@@ -103,15 +111,37 @@ struct ContentView: View {
                                               editMode: $panelEditMode)
                             .padding(.bottom, 8)
                     }
+                } else if isLandscape {
+                    // Landscape: PanelView fills the available height
+                    // directly (no ScrollView wrapper). Inside,
+                    // PanelView detects landscape geometry and uses
+                    // landscapeTransformed() to re-map cards into a
+                    // left-instruments / right-map split.
+                    PanelView(settings: settings,
+                              vario: vario,
+                              locationMgr: locationMgr,
+                              wind: wind,
+                              fai: fai,
+                              task: task,
+                              fitTriangleToken: fitTriangleToken,
+                              fitTaskToken: fitTaskToken,
+                              autoFollow: $autoFollow,
+                              editMode: $panelEditMode)
+                        .frame(width: outerGeo.size.width,
+                               height: outerGeo.size.height)
+                        .padding(.horizontal, 8)
+                        .padding(.top, 4)
+                        .padding(.bottom, 6)
                 } else {
-                    // Non-edit: the panel uses a fixed reference height
-                    // (PanelLayout.referenceHeight) so cards retain their
-                    // physical size across device sizes. Wrap in a
-                    // ScrollView with scroll disabled — contents don't
-                    // move, but anything below the viewport is still
-                    // reachable by long-pressing into edit mode first.
-                    // Most phones fit the full panel comfortably; this
-                    // is the safety net for the compact ones.
+                    // Portrait non-edit: the panel uses a fixed reference
+                    // height (PanelLayout.referenceHeight) so cards
+                    // retain their physical size across device sizes.
+                    // Wrap in a ScrollView with scroll disabled —
+                    // contents don't move, but anything below the
+                    // viewport is still reachable by long-pressing into
+                    // edit mode first. Most phones fit the full panel
+                    // comfortably; this is the safety net for compact
+                    // devices.
                     ScrollView(showsIndicators: false) {
                         PanelView(settings: settings,
                                   vario: vario,
@@ -123,11 +153,14 @@ struct ContentView: View {
                                   fitTaskToken: fitTaskToken,
                                   autoFollow: $autoFollow,
                                   editMode: $panelEditMode)
+                            .frame(height: PanelLayout.referenceHeight)
                             .padding(.horizontal, 8)
                             .padding(.top, 4)
                             .padding(.bottom, 6)
                     }
                 }
+                    } // end Group
+                } // end GeometryReader
             }
         }
         .onAppear {

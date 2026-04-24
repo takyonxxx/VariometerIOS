@@ -42,13 +42,31 @@ struct PanelView: View {
     @State private var resizeOffset: CGSize = .zero
 
     var body: some View {
-        let panelH = PanelLayout.referenceHeight
-
         return GeometryReader { geo in
+            // Landscape detection — when the device is rotated, GeometryReader
+            // hands us a wider-than-tall geometry. We switch into a different
+            // layout strategy:
+            //   - portrait : panel uses the fixed 780pt reference height and
+            //                ScrollView wraps it (existing behaviour).
+            //   - landscape: panel fits the actual screen height (no scroll),
+            //                and the cards are re-mapped via
+            //                landscapeTransformed() so the top half of the
+            //                portrait layout becomes the LEFT half and the
+            //                bottom half becomes the RIGHT half.
+            // Edit mode is disabled in landscape — drag/resize math assumes
+            // the static fraction grid, which would clash with the dynamic
+            // re-mapping. Pilots edit in portrait, fly in either.
+            let isLandscape = geo.size.width > geo.size.height
             let panelW = geo.size.width
+            let panelH: CGFloat = isLandscape
+                ? geo.size.height
+                : PanelLayout.referenceHeight
+            let activeLayout: PanelLayout = isLandscape
+                ? settings.panelLayout.landscapeTransformed()
+                : settings.panelLayout
 
             ZStack(alignment: .topLeading) {
-                if editMode {
+                if editMode && !isLandscape {
                     editBackdrop(panelW: panelW, panelH: panelH)
                 }
 
@@ -57,26 +75,28 @@ struct PanelView: View {
                 // everything else (zIndex 10). The actively-dragged
                 // or resized card jumps to zIndex 100 so its preview
                 // stays on top of neighbours.
-                ForEach(settings.panelLayout.cards) { card in
+                ForEach(activeLayout.cards) { card in
                     if card.kind == .map {
-                        cardContainer(for: card, panelW: panelW, panelH: panelH)
+                        cardContainer(for: card, panelW: panelW, panelH: panelH,
+                                       allowEdit: !isLandscape)
                             .zIndex(zIndex(for: card, base: 0))
                     }
                 }
-                ForEach(settings.panelLayout.cards) { card in
+                ForEach(activeLayout.cards) { card in
                     if card.kind != .map {
-                        cardContainer(for: card, panelW: panelW, panelH: panelH)
+                        cardContainer(for: card, panelW: panelW, panelH: panelH,
+                                       allowEdit: !isLandscape)
                             .zIndex(zIndex(for: card, base: 10))
                     }
                 }
             }
             .frame(width: panelW, height: panelH, alignment: .topLeading)
             .onLongPressGesture(minimumDuration: 0.6) {
+                guard !isLandscape else { return }
                 withAnimation(.easeInOut(duration: 0.2)) { editMode.toggle() }
                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             }
         }
-        .frame(height: panelH)
     }
 
     // MARK: - Card container (positions, sizes, applies edit affordances)
@@ -88,14 +108,15 @@ struct PanelView: View {
 
     @ViewBuilder
     private func cardContainer(for card: PanelCard,
-                                panelW: CGFloat, panelH: CGFloat) -> some View {
+                                panelW: CGFloat, panelH: CGFloat,
+                                allowEdit: Bool = true) -> some View {
         let baseX = card.x * panelW
         let baseY = card.y * panelH
         let baseW = card.w * panelW
         let baseH = card.h * panelH
 
-        let dragging = draggingCardID == card.id
-        let resizing = resizingCardID == card.id
+        let dragging = allowEdit && draggingCardID == card.id
+        let resizing = allowEdit && resizingCardID == card.id
         let frameW: CGFloat = resizing ? max(40, baseW + resizeDelta.width) : baseW
         let frameH: CGFloat = resizing ? max(40, baseH + resizeDelta.height) : baseH
         let offsetX: CGFloat = dragging ? dragOffset.width : 0
@@ -103,9 +124,13 @@ struct PanelView: View {
 
         cardView(for: card)
             .frame(width: frameW, height: frameH)
-            .overlay(editOverlay(for: card, panelW: panelW, panelH: panelH))
+            .overlay(allowEdit
+                     ? editOverlay(for: card, panelW: panelW, panelH: panelH)
+                     : nil)
             .offset(x: baseX + offsetX, y: baseY + offsetY)
-            .gesture(editMode ? dragGesture(for: card, panelW: panelW, panelH: panelH) : nil)
+            .gesture((allowEdit && editMode)
+                     ? dragGesture(for: card, panelW: panelW, panelH: panelH)
+                     : nil)
             .animation(.spring(response: 0.25, dampingFraction: 0.85),
                        value: settings.panelLayout.cards.map(\.id))
     }
@@ -539,6 +564,14 @@ struct PanelView: View {
             TelemetryCard(label: "RAKIM",
                           value: String(format: "%.0f", locationMgr.fusedAltitude),
                           unit: "m", color: .orange)
+        case .maxAltitude:
+            // Session peak altitude. Reset on app launch and on
+            // simulator stop. Uses a magenta tint to distinguish
+            // visually from the live altitude readout.
+            TelemetryCard(label: "MAX RAKIM",
+                          value: String(format: "%.0f", locationMgr.maxAltitude),
+                          unit: "m",
+                          color: Color(red: 0.95, green: 0.3, blue: 0.5))
         case .groundSpeed:
             TelemetryCard(label: "YER HIZI",
                           value: String(format: "%.0f", locationMgr.groundSpeedKmh),
@@ -677,7 +710,11 @@ private struct VarioCard: View {
             ZStack {
                 RoundedRectangle(cornerRadius: 10)
                     .fill(Color.black.opacity(0.55))
-                VStack(spacing: -4) {
+                // Value + unit side-by-side, aligned to the firstTextBaseline
+                // so the unit sits next to the bottom of the digits — same
+                // pattern as TelemetryCard (altitude/speed) for a consistent
+                // look across the panel.
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
                     Text(displayValue)
                         .font(.system(size: numSize, weight: .heavy, design: .rounded))
                         .foregroundColor(color)
@@ -705,7 +742,10 @@ private struct TelemetryCard: View {
             // default 2×1 card size. The minimumScaleFactor still protects
             // against clipping if the card is shrunk during edit.
             let scale = min(geo.size.width / 75.0, geo.size.height / 50.0)
-            let labelSize = max(8.0, min(20.0, 10.0 * scale))
+            // Label is metadata, not the primary readout — kept small
+            // so the eye locks onto the value first. Scale floor at 7,
+            // ceiling at 12 (was 8/20). Faded opacity helps too.
+            let labelSize = max(7.0, min(12.0, 7.0 * scale))
             let valueSize = max(16.0, min(64.0, 28.0 * scale))
             let unitSize = max(8.0, min(24.0, 12.0 * scale))
 
@@ -714,8 +754,9 @@ private struct TelemetryCard: View {
                     .fill(Color.black.opacity(0.55))
                 VStack(spacing: 2) {
                     Text(label)
-                        .font(.system(size: labelSize, weight: .bold))
-                        .foregroundColor(.white.opacity(0.7))
+                        .font(.system(size: labelSize, weight: .semibold))
+                        .tracking(0.5)
+                        .foregroundColor(.white.opacity(0.45))
                         .lineLimit(1)
                     HStack(alignment: .firstTextBaseline, spacing: 3) {
                         Text(value)
@@ -860,7 +901,7 @@ private struct CourseCard: View {
             // the card's rounded-rect border. Multiply by 0.55 to
             // leave a clear margin on all sides — enough that the
             // arrow never touches the frame at any rotation angle.
-            let arrowSize = min(geo.size.width, geo.size.height) * 0.60
+            let arrowSize = min(geo.size.width, geo.size.height) * 0.55
 
             ZStack {
                 RoundedRectangle(cornerRadius: 10)
@@ -913,7 +954,7 @@ private struct TrueHeadingCard: View {
             // Leave consistent margin so the rotated arrow tip never
             // touches the card's rounded-rect border (see CourseCard
             // for the geometry explanation).
-            let arrowSize = min(geo.size.width, geo.size.height) * 0.60
+            let arrowSize = min(geo.size.width, geo.size.height) * 0.55
 
             ZStack(alignment: .bottomTrailing) {
                 RoundedRectangle(cornerRadius: 10)
@@ -996,10 +1037,11 @@ private struct DistanceCard: View {
             // Match TelemetryCard scale base (75×50) so distance values
             // read at the same size as the other numeric cards.
             let scale = min(geo.size.width / 140.0, geo.size.height / 50.0)
-            let labelSize = max(8.0, min(20.0, 10.0 * scale))
+            // Label is metadata — same fade + small font as TelemetryCard.
+            let labelSize = max(7.0, min(12.0, 7.0 * scale))
             let valueSize = max(16.0, min(64.0, 28.0 * scale))
             let unitSize  = max(8.0, min(24.0, 12.0 * scale))
-            let iconSize  = max(12.0, min(32.0, 14.0 * scale))
+            let iconSize  = max(10.0, min(16.0, 9.0 * scale))
 
             ZStack {
                 RoundedRectangle(cornerRadius: 10)
@@ -1007,11 +1049,12 @@ private struct DistanceCard: View {
                 VStack(spacing: 2) {
                     HStack(spacing: 4) {
                         Image(systemName: systemIcon)
-                            .font(.system(size: iconSize, weight: .bold))
-                            .foregroundColor(color)
+                            .font(.system(size: iconSize, weight: .semibold))
+                            .foregroundColor(color.opacity(0.65))
                         Text(label)
-                            .font(.system(size: labelSize, weight: .bold))
-                            .foregroundColor(.white.opacity(0.7))
+                            .font(.system(size: labelSize, weight: .semibold))
+                            .tracking(0.5)
+                            .foregroundColor(.white.opacity(0.45))
                             .lineLimit(1)
                     }
                     HStack(alignment: .firstTextBaseline, spacing: 3) {
