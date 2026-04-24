@@ -860,7 +860,7 @@ private struct CourseCard: View {
             // the card's rounded-rect border. Multiply by 0.55 to
             // leave a clear margin on all sides — enough that the
             // arrow never touches the frame at any rotation angle.
-            let arrowSize = min(geo.size.width, geo.size.height) * 0.55
+            let arrowSize = min(geo.size.width, geo.size.height) * 0.60
 
             ZStack {
                 RoundedRectangle(cornerRadius: 10)
@@ -913,7 +913,7 @@ private struct TrueHeadingCard: View {
             // Leave consistent margin so the rotated arrow tip never
             // touches the card's rounded-rect border (see CourseCard
             // for the geometry explanation).
-            let arrowSize = min(geo.size.width, geo.size.height) * 0.55
+            let arrowSize = min(geo.size.width, geo.size.height) * 0.60
 
             ZStack(alignment: .bottomTrailing) {
                 RoundedRectangle(cornerRadius: 10)
