@@ -14,7 +14,35 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
     @Published var fusedAltitude: Double = 0        // m (preferred for display)
     @Published var groundSpeedKmh: Double = 0       // km/h
     @Published var courseDeg: Double = 0            // ° true (course over ground)
-    @Published var headingDeg: Double = 0           // ° magnetic heading
+    @Published var headingDeg: Double = 0            // ° magnetic heading from compass
+    /// Compass accuracy in degrees. Negative = compass data invalid
+    /// (compass disabled, uncalibrated, or hardware unavailable).
+    /// Positive values smaller = better. We treat anything > 0 and
+    /// ≤ 30° as "trustworthy" for the bestHeadingDeg selector.
+    @Published var headingAccuracyDeg: Double = -1
+
+    /// Preferred direction value for UI and navigation. Picks whichever
+    /// source is most reliable at this moment:
+    ///
+    ///   - Compass (magnetometer) heading: used when heading accuracy
+    ///     is positive and ≤ 30°. Works whether the pilot is moving or
+    ///     not, so arrows stay alive while hanging under the canopy
+    ///     waiting for the start gate.
+    ///   - GPS course-over-ground: fallback when the compass is
+    ///     uncalibrated or unavailable. Only meaningful while moving,
+    ///     but it's always available when there's a GPS fix.
+    ///
+    /// This applies to simulated flight too: the sim injects synthetic
+    /// course/heading values but we deliberately ignore them for the
+    /// direction arrow so the pilot can calibrate the card by physically
+    /// rotating the phone — just like in real flight. The arrow then
+    /// reflects the device's compass, not the sim's pretend course.
+    var bestHeadingDeg: Double {
+        if headingAccuracyDeg > 0 && headingAccuracyDeg <= 30 {
+            return headingDeg
+        }
+        return courseDeg
+    }
     @Published var horizontalAccuracy: Double = -1  // m
     @Published var verticalSpeed: Double = 0        // m/s (raw, unfiltered)
     @Published var hasFix: Bool = false
@@ -129,24 +157,65 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
     }
 
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-        guard !simulatedMode else { return }
         guard let loc = locations.last else { return }
-        coordinate = loc.coordinate
-        gpsAltitude = loc.altitude
-        horizontalAccuracy = loc.horizontalAccuracy
-        groundSpeedKmh = max(0, loc.speed) * 3.6
-        if loc.course >= 0 { courseDeg = loc.course }
-        hasFix = loc.horizontalAccuracy > 0 && loc.horizontalAccuracy < 50
-        updateFusedAltitude()
+        // While the sim is running, coordinate / altitude / speed come
+        // from the simulator's inject call — we don't let real GPS
+        // overwrite them.
+        if !simulatedMode {
+            coordinate = loc.coordinate
+            gpsAltitude = loc.altitude
+            horizontalAccuracy = loc.horizontalAccuracy
+            groundSpeedKmh = max(0, loc.speed) * 3.6
+            hasFix = loc.horizontalAccuracy > 0 && loc.horizontalAccuracy < 50
+            updateFusedAltitude()
+        }
+        // GPS course is ONLY used as a courseDeg fallback when the
+        // device has no usable compass (no magnetometer hardware, or
+        // the compass is uncalibrated → headingAccuracyDeg < 0 or
+        // > 30°). Normally both courseDeg and headingDeg track the
+        // compass — see didUpdateHeading.
+        if loc.course >= 0,
+           !(headingAccuracyDeg > 0 && headingAccuracyDeg <= 30) {
+            courseDeg = Self.smoothAngle(current: courseDeg, target: loc.course, alpha: 0.2)
+        }
     }
 
     func locationManager(_ manager: CLLocationManager, didUpdateHeading newHeading: CLHeading) {
-        guard !simulatedMode else { return }
-        if newHeading.trueHeading >= 0 {
-            headingDeg = newHeading.trueHeading
-        } else {
-            headingDeg = newHeading.magneticHeading
-        }
+        // Compass is the primary source for BOTH the pilot's heading
+        // AND their course — the pilot explicitly asked for direction
+        // values to always come from the device sensor (compass),
+        // never the GPS, so they can rotate the phone to align the
+        // direction arrow. GPS course is only consulted as a fallback
+        // in didUpdateLocations when the compass isn't usable.
+        let raw = newHeading.trueHeading >= 0
+            ? newHeading.trueHeading
+            : newHeading.magneticHeading
+        // Low-pass filter: raw compass jitters by several degrees even
+        // on a stationary phone. alpha = 0.15 → ~300 ms time constant
+        // at the compass's ~10 Hz update rate. Fast enough to track
+        // deliberate rotation, slow enough to suppress noise.
+        let smoothed = Self.smoothAngle(current: headingDeg, target: raw, alpha: 0.15)
+        headingDeg = smoothed
+        courseDeg = smoothed
+        headingAccuracyDeg = newHeading.headingAccuracy
+    }
+
+    /// Low-pass filter a bearing-style angle (0..360°). Handles the
+    /// wrap-around at 360→0 correctly — without this, a jump from 359°
+    /// to 1° would be filtered as a swing through 180° instead of 2°.
+    /// `alpha` ∈ (0, 1]: closer to 1 = snappier, closer to 0 = smoother.
+    private static func smoothAngle(current: Double,
+                                     target: Double,
+                                     alpha: Double) -> Double {
+        // Shortest-path delta in (-180, 180]
+        var delta = target - current
+        while delta > 180 { delta -= 360 }
+        while delta <= -180 { delta += 360 }
+        var result = current + delta * alpha
+        // Wrap back into [0, 360)
+        while result < 0 { result += 360 }
+        while result >= 360 { result -= 360 }
+        return result
     }
 
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
@@ -165,8 +234,16 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
         self.baroAltitude = altitude
         self.fusedAltitude = altitude
         self.groundSpeedKmh = groundSpeedKmh
-        self.courseDeg = courseDeg
-        self.headingDeg = headingDeg
+        // NOTE: courseDeg and headingDeg are deliberately NOT written
+        // here. Both values continue to come from the real device
+        // sensors (GPS course-over-ground when the phone moves, compass
+        // heading from the magnetometer) even while the sim is running.
+        // This is intentional — the user wants to be able to rotate the
+        // physical phone and have the direction arrow respond, exactly
+        // as it would in a real flight. The synthetic course/heading
+        // the sim would otherwise inject are discarded.
+        _ = courseDeg    // silence "unused parameter" warning
+        _ = headingDeg
         self.verticalSpeed = verticalSpeed
         self.horizontalAccuracy = 3.0
         self.hasFix = true

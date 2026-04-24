@@ -443,6 +443,18 @@ struct PanelView: View {
         return task.distanceToNextTurnpoint(from: p)
     }
 
+    /// 1-based index of the next unreached turnpoint. Used in the
+    /// "SONRAKİ TP" card label so the pilot knows which TP number is
+    /// being navigated to. Returns nil if there's no task or every TP
+    /// is already tagged.
+    private var nextTPIndex: Int? {
+        guard let p = locationMgr.coordinate else { return nil }
+        guard let next = task.nextTurnpoint(pilot: p) else { return nil }
+        guard let idx = task.turnpoints.firstIndex(where: { $0.id == next.id })
+        else { return nil }
+        return idx + 1   // 1-based for display
+    }
+
     private var distanceToGoal: Double? {
         guard let p = locationMgr.coordinate else { return nil }
         guard !task.turnpoints.isEmpty else { return nil }
@@ -484,33 +496,43 @@ struct PanelView: View {
             // turnpoint; otherwise shows current GPS course. An arrow
             // graphic makes the direction visually obvious at a glance.
             CourseCard(isTaskActive: !task.turnpoints.isEmpty,
-                       courseDeg: locationMgr.courseDeg,
+                       courseDeg: locationMgr.bestHeadingDeg,
                        pilotCoord: locationMgr.coordinate,
                        task: task)
         case .trueHeading:
             // Always-raw GPS course, never modulated by the task. Useful
             // for pilots who want to know which way they're physically
             // pointing independent of navigation.
-            TrueHeadingCard(courseDeg: locationMgr.courseDeg)
+            TrueHeadingCard(courseDeg: locationMgr.bestHeadingDeg)
         case .coordinates:
             CoordsCard(lat: locationMgr.coordinate?.latitude,
                        lon: locationMgr.coordinate?.longitude)
         case .windDial:
             WindDial(windFromDeg: wind.windFromDeg,
                      windSpeedKmh: wind.windSpeedKmh,
-                     courseDeg: locationMgr.courseDeg,
+                     courseDeg: locationMgr.bestHeadingDeg,
                      confidence: wind.confidence)
         case .thermalRadar:
             ThermalRadar(thermals: vario.thermals,
                          pilotCoord: locationMgr.coordinate,
-                         pilotCourseDeg: locationMgr.courseDeg,
+                         pilotCourseDeg: locationMgr.bestHeadingDeg,
                          radiusM: settings.thermalMemoryRadiusM)
         case .clock:
             ClockCard()
         case .battery:
             BatteryCard()
         case .distToNext:
-            DistanceCard(label: "SONRAKİ TP",
+            // Label shows the next TP's 1-based number so the pilot
+            // knows which turnpoint they're navigating to (e.g.
+            // "SONRAKİ TP 3"). Drops to plain "SONRAKİ TP" if for any
+            // reason we can't resolve the number.
+            let label: String = {
+                if let idx = nextTPIndex {
+                    return "SONRAKİ TP \(idx)"
+                }
+                return "SONRAKİ TP"
+            }()
+            DistanceCard(label: label,
                          meters: distanceToNextTP,
                          color: .cyan,
                          systemIcon: "arrow.forward.to.line")
@@ -527,7 +549,7 @@ struct PanelView: View {
         case .map:
             ZStack(alignment: .bottomTrailing) {
                 SatelliteMapView(coordinate: locationMgr.coordinate,
-                                 heading: locationMgr.courseDeg,
+                                 heading: locationMgr.bestHeadingDeg,
                                  thermals: vario.thermals,
                                  // Task loaded → pilot is flying waypoints,
                                  // not a free triangle. Hide FAI overlay

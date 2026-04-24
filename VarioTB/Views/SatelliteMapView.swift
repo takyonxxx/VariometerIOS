@@ -180,7 +180,7 @@ struct SatelliteMapView: UIViewRepresentable {
                 }
                 if task.turnpoints.count >= 2 {
                     let optimal = Self.optimalRoutePoints(for: task.turnpoints)
-                    for i in 0..<(task.turnpoints.count - 1) {
+                    for i in 0..<(optimal.count - 1) {
                         let leg = TaskRouteOverlay(fromPoint: optimal[i],
                                                     toPoint: optimal[i + 1])
                         mv.addOverlay(leg)
@@ -305,41 +305,66 @@ struct SatelliteMapView: UIViewRepresentable {
     // well for typical competition tasks (6-12 turnpoints).
 
     /// Compute the optimal tangent route through the given turnpoints.
-    /// Returns one coordinate per turnpoint: the point on (or at the center
-    /// of) each cylinder that a pilot would touch along the shortest path.
+    /// Returns a polyline the pilot should fly to visit every turnpoint
+    /// in order. One point per turnpoint, plus optional "exit" points
+    /// inserted when consecutive turnpoints are same-center concentric
+    /// cylinders that would otherwise be collapsed.
+    ///
+    /// Algorithm:
+    ///
+    ///   1. Initialize each point at its cylinder's center.
+    ///   2. Run 8 iterations of bisector relaxation — each interior
+    ///      point moves to the point on its cylinder edge along the
+    ///      bisector of the angle formed by its neighbors. This is
+    ///      the classic competition-optimum tangent construction.
+    ///   3. Degenerate case: if bisector collapses (all three consecutive
+    ///      TPs share the same center → bisector = 0, perpendicular
+    ///      fallback = 0), place the point on the goal-side radial
+    ///      instead. Keeps concentric laps on one side of the center
+    ///      rather than ping-ponging through it.
+    ///   4. Shift non-SSS tag points 30 m INWARD so the sim/pilot
+    ///      actually crosses the cylinder boundary (reach detection
+    ///      needs an interior fix with the 15 m tolerance).
+    ///   5. Insert an extra OUTSIDE point (radius + 100 m) before any
+    ///      entry cylinder whose predecessor point is already inside
+    ///      its boundary. This handles concentric laps where the pilot
+    ///      is coming from a smaller sibling — they have to exit the
+    ///      larger cylinder before re-entering.
+    ///   6. SSS (exit gate): move the point OUTSIDE the cylinder so
+    ///      the pilot tags on outward crossing, not entry.
     static func optimalRoutePoints(for turnpoints: [Turnpoint]) -> [CLLocationCoordinate2D] {
         guard turnpoints.count >= 2 else {
             return turnpoints.map { $0.coordinate }
         }
 
-        // We'll work in flat (lat, lon) space scaled so degrees roughly
-        // equal the same meters horizontally and vertically. This makes the
-        // geometry isotropic for the bisector math — inaccurate over long
-        // distances but fine for competition-scale tasks (< 200 km).
         let centerLatRad = turnpoints[0].latitude * .pi / 180
         let lonScale = cos(centerLatRad)
+        let metersPerDeg = 111_000.0
 
         func toXY(_ c: CLLocationCoordinate2D) -> (x: Double, y: Double) {
-            // x = lon * lonScale, y = lat (both in degrees * lonScale effective)
-            return (c.longitude * lonScale, c.latitude)
+            (c.longitude * lonScale, c.latitude)
         }
         func fromXY(_ p: (x: Double, y: Double)) -> CLLocationCoordinate2D {
             CLLocationCoordinate2D(latitude: p.y, longitude: p.x / lonScale)
         }
 
-        // Degrees per meter (approximate, WGS-84 at small scales)
-        let metersPerDeg = 111_000.0
-
-        // Initialize with cylinder centers
         var pts: [(x: Double, y: Double)] = turnpoints.map { toXY($0.coordinate) }
         let centers = pts
-        // Radii converted to the same scaled units (degrees-of-lat, which
-        // equals x-units after our scaling)
         let radii = turnpoints.map { $0.radiusM / metersPerDeg }
 
-        // Iterate. First and last points stay at centers (they are the
-        // task start and finish anchors). Interior points move to each
-        // cylinder's edge along the angle bisector toward their neighbors.
+        // Goal-side radial direction for each cylinder, used as
+        // fallback when the bisector is degenerate.
+        let goalXY = toXY(turnpoints.last!.coordinate)
+        var goalRadial: [(dx: Double, dy: Double)] = centers.map { c in
+            let dx = goalXY.x - c.x
+            let dy = goalXY.y - c.y
+            let len = sqrt(dx*dx + dy*dy)
+            if len < 1e-12 { return (1, 0) }   // goal itself — arbitrary
+            return (dx / len, dy / len)
+        }
+
+        // Bisector relaxation — 8 iterations converges for typical
+        // competition-scale tasks.
         let iterations = 8
         for _ in 0..<iterations {
             var next = pts
@@ -347,36 +372,150 @@ struct SatelliteMapView: UIViewRepresentable {
                 let c = centers[i]
                 let prev = pts[i - 1]
                 let after = pts[i + 1]
-                // Unit vectors from center to neighbors
                 let vPrev = normalized(dx: prev.x - c.x, dy: prev.y - c.y)
                 let vNext = normalized(dx: after.x - c.x, dy: after.y - c.y)
-                // Sum (the bisector direction)
                 var bx = vPrev.dx + vNext.dx
                 var by = vPrev.dy + vNext.dy
-                let blen = sqrt(bx*bx + by*by)
+                var blen = sqrt(bx*bx + by*by)
                 if blen < 1e-9 {
-                    // Neighbors are exactly opposite → pick perpendicular
-                    // to (next - prev) instead
+                    // Try perpendicular to (next - prev)
                     let dx = after.x - prev.x
                     let dy = after.y - prev.y
                     let perp = normalized(dx: -dy, dy: dx)
                     bx = perp.dx; by = perp.dy
+                    blen = sqrt(bx*bx + by*by)
+                }
+                if blen < 1e-9 {
+                    // Fully degenerate (all three coincident centers —
+                    // concentric lap case). Use goal-side radial so
+                    // laps progress toward goal instead of oscillating.
+                    bx = goalRadial[i].dx
+                    by = goalRadial[i].dy
                 } else {
                     bx /= blen; by /= blen
                 }
-                // Place point on cylinder edge along the bisector
                 next[i] = (c.x + bx * radii[i], c.y + by * radii[i])
             }
             pts = next
         }
 
-        return pts.map { fromXY($0) }
+        // Convert to coordinates and apply type-aware shifts so the
+        // pilot crosses each boundary correctly.
+        var out: [CLLocationCoordinate2D] = []
+        out.reserveCapacity(pts.count * 2)
+        out.append(fromXY(pts[0]))   // start point — unchanged
+
+        for i in 1..<pts.count {
+            let tp = turnpoints[i]
+            let tpCoord = turnpoints[i].coordinate
+            let rawEdge = fromXY(pts[i])
+
+            switch tp.type {
+            case .takeoff:
+                out.append(rawEdge)   // unused in practice
+
+            case .sss:
+                // Exit gate — move point OUTSIDE the cylinder by 100 m
+                // along the radial from center through rawEdge. If the
+                // raw edge happens to be the center (degenerate SSS at
+                // launch), use the goal-side radial.
+                let shifted = shiftOutward(
+                    point: rawEdge, center: tpCoord,
+                    radius: tp.radiusM, extraM: 100,
+                    fallbackRadial: goalRadial[i],
+                    lonScale: lonScale)
+                out.append(shifted)
+
+            case .turn, .ess:
+                // Check whether the previous path point is INSIDE this
+                // cylinder — if so, we need an explicit exit point
+                // first so the pilot can leave before re-entering.
+                let prevPt = out.last!
+                if metersBetween(prevPt, tpCoord) < tp.radiusM {
+                    let outPt = shiftOutward(
+                        point: rawEdge, center: tpCoord,
+                        radius: tp.radiusM, extraM: 100,
+                        fallbackRadial: goalRadial[i],
+                        lonScale: lonScale)
+                    out.append(outPt)
+                }
+                // Tag point — 30 m inside boundary along the bisector
+                // direction (i.e. pull rawEdge toward center by 30 m).
+                let shifted = shiftInward(
+                    point: rawEdge, center: tpCoord, byM: 30)
+                out.append(shifted)
+
+            case .goal:
+                let prevPt = out.last!
+                if metersBetween(prevPt, tpCoord) < tp.radiusM {
+                    let outPt = shiftOutward(
+                        point: rawEdge, center: tpCoord,
+                        radius: tp.radiusM, extraM: 100,
+                        fallbackRadial: goalRadial[i],
+                        lonScale: lonScale)
+                    out.append(outPt)
+                }
+                out.append(tpCoord)   // land at goal center
+            }
+        }
+
+        return out
     }
 
     private static func normalized(dx: Double, dy: Double) -> (dx: Double, dy: Double) {
         let len = sqrt(dx*dx + dy*dy)
         if len < 1e-12 { return (0, 0) }
         return (dx / len, dy / len)
+    }
+
+    /// Distance in meters between two coordinates.
+    private static func metersBetween(_ a: CLLocationCoordinate2D,
+                                       _ b: CLLocationCoordinate2D) -> Double {
+        let R = 6371000.0
+        let lat1 = a.latitude * .pi / 180
+        let lat2 = b.latitude * .pi / 180
+        let dLat = (b.latitude - a.latitude) * .pi / 180
+        let dLon = (b.longitude - a.longitude) * .pi / 180
+        let sa = sin(dLat/2), sb = sin(dLon/2)
+        let h = sa*sa + cos(lat1)*cos(lat2)*sb*sb
+        return 2 * R * asin(min(1, sqrt(h)))
+    }
+
+    /// Move `point` 30 m toward `center`. Used to nudge tag points
+    /// inside their cylinder so reach detection fires reliably.
+    private static func shiftInward(point: CLLocationCoordinate2D,
+                                     center: CLLocationCoordinate2D,
+                                     byM: Double) -> CLLocationCoordinate2D {
+        let d = metersBetween(point, center)
+        if d <= byM { return center }   // already at/near center
+        let frac = byM / d
+        return CLLocationCoordinate2D(
+            latitude: point.latitude + (center.latitude - point.latitude) * frac,
+            longitude: point.longitude + (center.longitude - point.longitude) * frac)
+    }
+
+    /// Move `point` outward so it sits `radius + extraM` from `center`.
+    /// If `point` is at the center (degenerate), use `fallbackRadial`
+    /// for direction.
+    private static func shiftOutward(point: CLLocationCoordinate2D,
+                                      center: CLLocationCoordinate2D,
+                                      radius: Double,
+                                      extraM: Double,
+                                      fallbackRadial: (dx: Double, dy: Double),
+                                      lonScale: Double) -> CLLocationCoordinate2D {
+        let metersPerDeg = 111_000.0
+        let d = metersBetween(point, center)
+        let targetM = radius + extraM
+        if d < 1 {
+            // Point at center — use fallback radial.
+            return CLLocationCoordinate2D(
+                latitude: center.latitude + fallbackRadial.dy * targetM / metersPerDeg,
+                longitude: center.longitude + fallbackRadial.dx * targetM / (metersPerDeg * lonScale))
+        }
+        let scale = targetM / d
+        return CLLocationCoordinate2D(
+            latitude: center.latitude + (point.latitude - center.latitude) * scale,
+            longitude: center.longitude + (point.longitude - center.longitude) * scale)
     }
 
     final class Coordinator: NSObject, MKMapViewDelegate, UIGestureRecognizerDelegate {

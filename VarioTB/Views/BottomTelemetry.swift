@@ -16,7 +16,7 @@ struct BottomTelemetry: View {
                               value: String(format: "%.0f", locationMgr.groundSpeedKmh),
                               unit: "km/h")
                 TelemetryTile(title: L10n.string("course"),
-                              value: String(format: "%.0f°", locationMgr.courseDeg),
+                              value: String(format: "%.0f°", locationMgr.bestHeadingDeg),
                               unit: "")
             }
 

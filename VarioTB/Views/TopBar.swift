@@ -68,16 +68,30 @@ struct TopBar: View {
                     let waypoints: [FlightSimulator.TaskWaypoint] =
                         task.turnpoints.enumerated().map { (idx, tp) in
                             let isInterior = idx > 0 && idx < task.turnpoints.count - 1
+                            let kind: FlightSimulator.TaskWaypoint.Kind
+                            switch tp.type {
+                            case .takeoff: kind = .takeoff
+                            case .sss:     kind = .sss
+                            case .turn:    kind = .turn
+                            case .ess:     kind = .ess
+                            case .goal:    kind = .goal
+                            }
                             return FlightSimulator.TaskWaypoint(
                                 coord: CLLocationCoordinate2D(
                                     latitude: tp.latitude,
                                     longitude: tp.longitude),
                                 radiusM: tp.radiusM,
-                                altM: tp.altitudeM + 400,
-                                climbAtTP: isInterior
+                                altM: tp.altitudeM,
+                                climbAtTP: isInterior,
+                                kind: kind
                             )
                         }
-                    simulator.loadTask(waypoints)
+                    // Use the exact polyline the map is drawing — this
+                    // way the simulator visibly tracks the blue route
+                    // line on screen instead of flying its own path.
+                    let routePoints = SatelliteMapView.optimalRoutePoints(
+                        for: task.turnpoints)
+                    simulator.loadTask(waypoints, routePoints: routePoints)
                     simulator.start()
                 }
             } label: {

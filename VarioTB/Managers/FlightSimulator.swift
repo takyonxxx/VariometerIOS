@@ -102,10 +102,48 @@ final class FlightSimulator: ObservableObject {
         let radiusM: Double
         let altM: Double       // target altitude when reaching the TP
         let climbAtTP: Bool    // simulate a thermal climb here before next leg
+        /// TP kind — mirrors TurnpointType. Drives the sim path: SSS is
+        /// an exit gate (pilot crosses the cylinder boundary OUTWARD to
+        /// tag it), turn/ess/goal are entry cylinders (pilot crosses
+        /// INWARD). Takeoff is treated as a launch point, no crossing.
+        let kind: Kind
+
+        enum Kind { case takeoff, sss, turn, ess, goal }
     }
+    /// Distance in meters between two points. Used by the sim for
+    /// pilot-position waypoint tracking. Internal helper.
+    private func distanceMeters(fromLat: Double, fromLon: Double,
+                                 toLat: Double, toLon: Double) -> Double {
+        let R = 6371000.0
+        let phi1 = fromLat * .pi / 180
+        let phi2 = toLat * .pi / 180
+        let dPhi = (toLat - fromLat) * .pi / 180
+        let dLam = (toLon - fromLon) * .pi / 180
+        let sa = sin(dPhi/2)
+        let sb = sin(dLam/2)
+        let h = sa*sa + cos(phi1)*cos(phi2)*sb*sb
+        return 2 * R * asin(min(1, sqrt(h)))
+    }
+
     private var taskWaypoints: [TaskWaypoint] = []
     private var taskCurrentIdx: Int = 0
     private var inTaskMode: Bool { !taskWaypoints.isEmpty }
+    /// Set to true once the pilot has been verified outside the current
+    /// TP's cylinder during this leg. Reach-detection gates on this flag
+    /// so concentric laps can't be collapsed into a single frame. Reset
+    /// on every `.taskLeg` entry.
+    private var legHasExited: Bool = false
+
+    /// Pre-computed polyline the sim flies along — one segment per
+    /// action the pilot needs to take to tag every TP in order. Built
+    /// once when the task is loaded (see `buildSimPath()`). The sim's
+    /// `.taskLeg` phase is now a dead-simple path follower: head to
+    /// `simPathPoints[simPathIdx]`, advance when within 50 m, stop
+    /// when we run out of points. No tangent re-optimisation at each
+    /// step, no thermalling detours — the trajectory is exactly the
+    /// line the pilot should see on the map.
+    private var simPathPoints: [CLLocationCoordinate2D] = []
+    private var simPathIdx: Int = 0
 
     /// Compute the optimal tangent point on waypoint `idx` that the
     /// simulator should fly toward given its current position. Mirrors
@@ -200,13 +238,26 @@ final class FlightSimulator: ObservableObject {
     /// (which marks it as reached), optionally thermalling a few seconds,
     /// and moving on — all the way through to goal.
     ///
-    /// Pass an empty array to clear task mode and return to the default
-    /// triangle scenario.
-    func loadTask(_ waypoints: [TaskWaypoint]) {
+    /// Load a task into the simulator. The caller passes both the list
+    /// of task waypoints (for metadata — radii, types, altitudes) and
+    /// the `routePoints` polyline the sim should physically fly along.
+    /// The polyline must be the same one drawn on the map by
+    /// `SatelliteMapView.optimalRoutePoints(for:)`: that function has
+    /// been updated to emit points already positioned correctly for
+    /// reach detection (inside entry cylinders, outside SSS). Passing
+    /// the map's points to the sim guarantees a one-to-one match
+    /// between the drawn route and the sim's trajectory.
+    ///
+    /// The first polyline point is the pilot's spawn position. The sim
+    /// skips it and begins flying at `routePoints[1]`.
+    ///
+    /// Pass an empty array to clear task mode.
+    func loadTask(_ waypoints: [TaskWaypoint],
+                  routePoints: [CLLocationCoordinate2D] = []) {
         self.taskWaypoints = waypoints
         self.taskCurrentIdx = 0
-        // If the caller set both startOverride and a task, the task's
-        // first waypoint wins (they should match — comp takeoff).
+        self.simPathPoints = routePoints
+        self.simPathIdx = 0
         if let first = waypoints.first {
             self.startOverride = (first.coord, first.altM)
         }
@@ -232,8 +283,10 @@ final class FlightSimulator: ObservableObject {
             headingDeg: 250,
             verticalSpeed: 0
         )
-        // Skip the scripted launch phase — the sim starts already
-        // airborne and begins flying toward the first remaining TP.
+        // Route points supplied by the caller are the absolute source
+        // of truth for where the sim flies. simPathIdx=1 skips the
+        // start point (which is our spawn position).
+        simPathIdx = min(1, max(0, simPathPoints.count - 1))
         taskCurrentIdx = 1   // index 0 was the takeoff we spawned at
         if taskCurrentIdx < taskWaypoints.count {
             enterPhase(.taskLeg)
@@ -276,7 +329,12 @@ final class FlightSimulator: ObservableObject {
         if let override = startOverride {
             lat = override.coord.latitude
             lon = override.coord.longitude
-            altM = override.altM
+            // Task mode: start 1000 m above the takeoff altitude so the
+            // pilot has enough height to glide across the first few legs
+            // before needing a thermal. The low-altitude guard in
+            // `.taskLeg` will fire them into thermal-recovery climbs as
+            // they bleed altitude through the task.
+            altM = override.altM + 1000
         } else {
             lat = Self.launchLat
             lon = Self.launchLon
@@ -296,6 +354,11 @@ final class FlightSimulator: ObservableObject {
         phase = p
         phaseStartTime = Date()
         phaseStartAltitude = altM
+        // Reset the "has-exited" gate each time we start a new task leg.
+        // See legHasExited docs for why this is needed.
+        if p == .taskLeg {
+            legHasExited = false
+        }
         DispatchQueue.main.async { self.currentPhaseLabel = p.rawValue }
     }
 
@@ -398,95 +461,70 @@ final class FlightSimulator: ObservableObject {
 
         // MARK: Task-aware phases
         //
-        // taskLeg: fly straight toward taskWaypoints[taskCurrentIdx].
-        // When we get within (radius + small margin), mark "reached" by
-        // actually snapping inside the cylinder, then either climb
-        // briefly or advance to the next TP. At the end we stop.
+        // taskLeg: follow the pre-computed flight path as a simple
+        // polyline. Each `simPathPoints[simPathIdx]` is the next target;
+        // when we get within a small tolerance we advance to the next
+        // point. No tangent recomputation, no thermal circling, no edge
+        // skimming — this produces a clean trajectory that visually
+        // overlays the optimum route line on the map. Reach detection
+        // is handled entirely by CompetitionTask (which already has the
+        // correct exit-then-entry gate for concentric laps).
         case .taskLeg:
-            guard taskCurrentIdx < taskWaypoints.count else {
+            // If the task path has been fully walked, land.
+            guard simPathIdx < simPathPoints.count else {
                 enterPhase(.taskDone)
                 return
             }
-            let target = taskWaypoints[taskCurrentIdx]
+
+            // Low-altitude guard: when the pilot has sunk below 2000 m,
+            // pause the leg and climb a thermal back up to 2500 m. This
+            // keeps the sim from arriving at goal below ground level on
+            // long tasks. Check BEFORE path following so we don't
+            // advance the path while climbing.
+            if altM < 2000 {
+                enterPhase(.taskClimb)
+                placeSimulatedThermal(
+                    lat: lat, lon: lon,
+                    strength: 4.0, altM: altM)
+                return
+            }
+
+            let target = simPathPoints[simPathIdx]
             horizontalSpeedMs = 10
-            // Sink a little while gliding, gain a little while above TP
-            // altitude (keeps sim-altitude bounded around each TP's altM).
-            if altM < target.altM - 50 {
-                verticalSpeedMs = 0.8   // climbing to TP altitude
-            } else if altM > target.altM + 200 {
-                verticalSpeedMs = -1.0  // descending to TP altitude
-            } else {
-                verticalSpeedMs = -0.5
-            }
-            // Fly toward the OPTIMAL TANGENT POINT on this cylinder so
-            // the trajectory matches the blue optimum-route overlay on
-            // the map. Tangent is recomputed each step (6 bisector
-            // iterations) from the current pilot position and remaining
-            // cylinders, so the heading naturally curves through each
-            // leg the way a racing pilot flies.
-            //
-            // To guarantee the pilot physically enters the cylinder
-            // (reach detection needs an interior fix), we only switch to
-            // center-steering when the pilot is within a small buffer of
-            // the tangent POINT itself — not the center. This keeps the
-            // trajectory glued to the optimum line until the last moment.
-            let dCenter = distanceM(fromLat: lat, fromLon: lon,
-                                    toLat: target.coord.latitude,
-                                    toLon: target.coord.longitude)
-            let tangent = currentOptimalTarget() ?? target.coord
-            let dTangent = distanceM(fromLat: lat, fromLon: lon,
-                                     toLat: tangent.latitude,
-                                     toLon: tangent.longitude)
-            // Switch to center-steering only when pilot is <80m from
-            // the tangent crossing point. This is close enough that the
-            // deflection into the cylinder is a gentle course change,
-            // and well before the old "1.2 × radius" cut-off that pulled
-            // the trajectory away from the optimum line.
-            let steerTarget: CLLocationCoordinate2D
-            if dTangent < 80 {
-                steerTarget = target.coord
-            } else {
-                steerTarget = tangent
-            }
-            headingDeg = bearingTo(lat: steerTarget.latitude,
-                                    lon: steerTarget.longitude)
-            let d = dCenter
-            // Reach: pilot is inside the cylinder. Use a tiny negative
-            // margin (5m) so we commit the reach only AFTER the pilot has
-            // clearly crossed the boundary, not just grazing the edge.
-            if d < target.radiusM - 5 {
-                if target.climbAtTP {
-                    enterPhase(.taskClimb)
-                    placeSimulatedThermal(lat: target.coord.latitude,
-                                           lon: target.coord.longitude,
-                                           strength: 3.5,
-                                           altM: altM)
-                } else {
-                    // Advance to next TP immediately
-                    taskCurrentIdx += 1
-                    if taskCurrentIdx < taskWaypoints.count {
-                        enterPhase(.taskLeg)
-                    } else {
-                        enterPhase(.taskDone)
-                    }
+            verticalSpeedMs = -0.3   // steady sink while gliding
+
+            let d = distanceM(fromLat: lat, fromLon: lon,
+                              toLat: target.latitude,
+                              toLon: target.longitude)
+            headingDeg = bearingTo(lat: target.latitude,
+                                    lon: target.longitude)
+
+            // Advance when we're within 10 m of the target polyline
+            // point. Tight enough that the sim doesn't push deep into
+            // a cylinder before turning for the next leg — route
+            // points sit on or very near cylinder edges, so 10 m is
+            // plenty of margin to register "reached" while staying
+            // within the cylinder boundary.
+            if d < 10 {
+                simPathIdx += 1
+                if simPathIdx >= simPathPoints.count {
+                    enterPhase(.taskDone)
                 }
             }
 
         case .taskClimb:
-            // Short thermal at each interior TP — gain ~400m then move on.
-            // Gives realism (pilots don't fly dead-straight; they climb
-            // at each TP) and tests the app's thermal detection path.
-            verticalSpeedMs = 3.8
-            horizontalSpeedMs = 4
-            headingDeg += 40 * simDt
+            // Altitude recovery: pilot circles a thermal to regain
+            // height. We stay in this phase until we hit 2500 m, then
+            // resume task-leg flight where we left off (simPathIdx is
+            // untouched). While thermalling we slow down and turn
+            // steadily — the rendering layer sees vario > 0 and the
+            // audio vario responds, just like in a real climb.
+            verticalSpeedMs = 4.0
+            horizontalSpeedMs = 3          // slow circling
+            headingDeg += 60 * simDt       // ~60°/s = tight thermal turn
             if headingDeg >= 360 { headingDeg -= 360 }
-            if altM - phaseStartAltitude >= 400 || t > 5.0 {
-                taskCurrentIdx += 1
-                if taskCurrentIdx < taskWaypoints.count {
-                    enterPhase(.taskLeg)
-                } else {
-                    enterPhase(.taskDone)
-                }
+            if altM >= 2500 {
+                enterPhase(.taskLeg)
             }
 
         case .taskDone:
@@ -548,6 +586,21 @@ final class FlightSimulator: ObservableObject {
         let lat1 = lat * .pi / 180
         let lat2 = toLat * .pi / 180
         let dLon = (toLon - lon) * .pi / 180
+        let y = sin(dLon) * cos(lat2)
+        let x = cos(lat1) * sin(lat2) - sin(lat1) * cos(lat2) * cos(dLon)
+        let b = atan2(y, x) * 180 / .pi
+        return b < 0 ? b + 360 : b
+    }
+
+    /// Bearing from `center` to `point`. Used to pick an outward heading
+    /// when the pilot needs to exit a cylinder before re-entering it on
+    /// a concentric lap — we push them in the direction they're already
+    /// "leaning" so the course change stays smooth.
+    private func bearingFromCenter(centerLat: Double, centerLon: Double,
+                                    pointLat: Double, pointLon: Double) -> Double {
+        let lat1 = centerLat * .pi / 180
+        let lat2 = pointLat * .pi / 180
+        let dLon = (pointLon - centerLon) * .pi / 180
         let y = sin(dLon) * cos(lat2)
         let x = cos(lat1) * sin(lat2) - sin(lat1) * cos(lat2) * cos(dLon)
         let b = atan2(y, x) * 180 / .pi

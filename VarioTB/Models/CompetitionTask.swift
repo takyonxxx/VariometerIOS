@@ -148,12 +148,22 @@ final class CompetitionTask: ObservableObject, Codable {
     /// won't change until the next reach).
     @Published var lastReachEvent: UUID? = nil
 
+    /// Internal gate for the exit-then-entry reach rule. True when the
+    /// pilot has been verified outside the NEXT turnpoint's cylinder
+    /// since the last reach (or since task load). Flips back to false
+    /// every time a TP is reached, forcing the pilot to leave the new
+    /// "next TP" cylinder and come back. See `updateProgress` for why.
+    ///
+    /// Not @Published — this is pure bookkeeping. Starts true so the
+    /// very first TP (takeoff or a cylinder the pilot is far from) can
+    /// be reached without artificial delay.
+    private var nextTPExitedSinceLastReach: Bool = true
+
     /// GPS tolerance applied to cylinder entry checks. Real pilots don't
     /// get perfect fixes — 10-15m error is normal. We widen each cylinder
     /// by this much when deciding "pilot reached the TP" so a pilot who
     /// physically flew the edge doesn't get cheated by a stray GPS fix.
-    /// Matches what XCTrack and FlySkyhy allow for competition scoring.
-    static let gpsToleranceM: Double = 15.0
+    static let gpsToleranceM: Double = 10.0
 
     /// Call this on every GPS update while a task is active. A turnpoint
     /// is considered reached when the pilot's position is inside its
@@ -164,25 +174,90 @@ final class CompetitionTask: ObservableObject, Codable {
     /// Turnpoints are processed in strict order: you can't reach TP3
     /// before TP2. If the pilot skips one (e.g. flies too wide) the task
     /// stays paused on that TP until they go back and tag it.
+    /// Strict progress-through-the-task reach detection.
+    ///
+    /// Called on every GPS fix. Walks the turnpoint list in order and
+    /// advances one TP at a time — pilots must tag TP1 before TP2.
+    /// If the pilot flies too wide and skips one, the task stays paused
+    /// on that TP until they fly back and tag it.
+    ///
+    /// ### Concentric-lap handling
+    /// On multi-lap tasks the list often contains the same cylinder
+    /// repeated (TP-10km, TP-5km, TP-10km, TP-5km, …). A naive "is the
+    /// pilot inside this cylinder?" check collapses all laps into the
+    /// same GPS fix — once the pilot flies into the 5 km ring, they're
+    /// trivially inside every larger same-center ring ahead of them
+    /// too, and the task advances through every remaining lap in a
+    /// single frame.
+    ///
+    /// The fix is an **exit-then-entry gate**: before the pilot can
+    /// reach the *next* turnpoint we require them to have been clearly
+    /// OUTSIDE that cylinder at least once since the previous TP was
+    /// tagged. Tracked in `nextTPExitedSinceLastReach`. For legs where
+    /// the pilot starts outside the next TP anyway (the typical case
+    /// on most tasks) this is a no-op — the flag flips true on the
+    /// first fix. For concentric-lap legs it forces the pilot to
+    /// actually leave the cylinder and come back before the reach
+    /// counts, which is what "do 4 laps" means geometrically.
     func updateProgress(pilot: CLLocationCoordinate2D) {
-        for tp in turnpoints {
-            guard !reachedTPIds.contains(tp.id) else { continue }
-            let d = Self.haversine(pilot, tp.coordinate)
-            if d <= tp.radiusM + Self.gpsToleranceM {
-                reachedTPIds.insert(tp.id)
-                // Broadcast the reach event. Audible chime + haptic
-                // fire immediately; any visible flash in the UI (course
-                // card, map annotation, etc.) latches onto the
-                // published id via its own @Published observer.
-                lastReachEvent = tp.id
+        // Find the first unreached turnpoint — that's the one the pilot
+        // is currently navigating to.
+        guard let nextIdx = turnpoints.firstIndex(where: {
+            !reachedTPIds.contains($0.id)
+        }) else { return }   // task complete
+
+        let next = turnpoints[nextIdx]
+        let d = Self.haversine(pilot, next.coordinate)
+
+        // TP kind determines reach semantics:
+        //   - SSS (start-of-speed-section) is an EXIT gate: pilot tags
+        //     it by crossing the boundary OUTWARD. They normally start
+        //     inside (takeoff is usually in the SSS cylinder), then
+        //     exit to begin the race.
+        //   - All other kinds (turn, ess, goal) are ENTRY cylinders:
+        //     pilot tags by crossing the boundary INWARD. The exit-
+        //     then-entry gate still applies so concentric laps don't
+        //     collapse.
+        if next.type == .sss {
+            // SSS exit reach: fire the moment the pilot clears the
+            // boundary outward (d > radius + tolerance). No "exit
+            // first then enter" gate is needed because the event IS
+            // the exit.
+            if d > next.radiusM + Self.gpsToleranceM {
+                reachedTPIds.insert(next.id)
+                nextTPExitedSinceLastReach = false
+                lastReachEvent = next.id
                 ChimePlayer.shared.playReachChime()
                 DispatchQueue.main.async {
                     UINotificationFeedbackGenerator().notificationOccurred(.success)
                 }
-                continue
             }
-            // Not in this cylinder yet — can't look past it.
-            break
+            return
+        }
+
+        // Entry cylinder path (turn / ess / goal).
+        //
+        // Track whether the pilot has been clearly outside the next TP's
+        // cylinder since the last reach. 50 m buffer outside the radius
+        // avoids toggling on GPS jitter right at the edge.
+        if d > next.radiusM + 50 {
+            nextTPExitedSinceLastReach = true
+        }
+
+        // Reach test — must be inside the cylinder AND have exited first
+        // (to stop concentric cylinders from all reaching at once). The
+        // gpsToleranceM margin absorbs GPS noise for edge-grazing tags.
+        if nextTPExitedSinceLastReach,
+           d <= next.radiusM + Self.gpsToleranceM {
+            reachedTPIds.insert(next.id)
+            // Reset the gate so the *next* TP has to be exited before
+            // its own reach counts.
+            nextTPExitedSinceLastReach = false
+            lastReachEvent = next.id
+            ChimePlayer.shared.playReachChime()
+            DispatchQueue.main.async {
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+            }
         }
     }
 
@@ -199,6 +274,20 @@ final class CompetitionTask: ObservableObject, Codable {
     /// (0°=North, clockwise). Returns nil if there is no next point.
     func bearingToNextTurnpoint(from pilot: CLLocationCoordinate2D) -> Double? {
         guard let tp = nextTurnpoint(pilot: pilot) else { return nil }
+        // For SSS (exit gate): the pilot's real navigation target is
+        // the turnpoint AFTER SSS — SSS is just a gate they cross on
+        // the way. Pointing the arrow at the SSS center is useless
+        // because the pilot starts inside the SSS cylinder, and the
+        // center is behind/below them once they're flying. Showing
+        // the direction to the next real TP matches the optimum
+        // route (the sim flies it too), so before the pilot crosses
+        // the start they're already aligned with the correct heading.
+        if tp.type == .sss,
+           let idx = turnpoints.firstIndex(where: { $0.id == tp.id }),
+           idx + 1 < turnpoints.count {
+            let after = turnpoints[idx + 1]
+            return Self.bearing(from: pilot, to: after.coordinate)
+        }
         return Self.bearing(from: pilot, to: tp.coordinate)
     }
 
@@ -342,28 +431,61 @@ final class CompetitionTask: ObservableObject, Codable {
     func distanceToNextTurnpoint(from pilot: CLLocationCoordinate2D) -> Double? {
         guard let next = nextTurnpoint(pilot: pilot) else { return nil }
         let dCenter = Self.haversine(pilot, next.coordinate)
-        if dCenter <= next.radiusM + Self.gpsToleranceM { return 0 }
-        if dCenter < next.radiusM * 2 {
-            // Close to the cylinder — return the straight-line distance
-            // to its perimeter (this is what the pilot perceives and is
-            // stable as they approach).
-            return max(0, dCenter - next.radiusM)
+
+        // SSS (exit gate): pilot starts inside, tags by crossing out.
+        // Show distance to the boundary as `radius - dCenter` while
+        // inside; drops to 0 the moment they cross out. Outside the
+        // SSS shouldn't be next anymore (nextTurnpoint advances past
+        // it on exit), so we don't need an outside branch.
+        if next.type == .sss {
+            return max(0, next.radiusM - dCenter)
         }
+
+        // Entry cylinders (turn/ess/goal): what the pilot needs to
+        // know is "how far to the cylinder boundary I still need to
+        // tag". Use absolute distance-to-perimeter — positive when
+        // outside (still flying in), positive when inside-but-not-
+        // tagged (flying through without reaching, exit-gate pending),
+        // dropping to 0 only when the pilot is exactly ON the edge.
+        //
+        // This stays meaningful if the pilot flies past an entry
+        // cylinder without being close enough for the reach gate to
+        // register: the number grows as they leave, making clear they
+        // haven't tagged it and need to come back.
+        let toPerimeter = abs(dCenter - next.radiusM)
+        if dCenter < next.radiusM * 2 {
+            // Close to the cylinder — straight-line to perimeter is
+            // more stable than running the full tangent refinement.
+            return toPerimeter
+        }
+        // Far from the cylinder — run the optimum tangent to get a
+        // meaningful "flight distance" that accounts for the route.
         let pts = optimalRemainingPoints(from: pilot)
         guard pts.count >= 2 else { return nil }
         return Self.haversine(pts[0], pts[1])
     }
 
-    /// Optimal-route distance from pilot to goal, summed over all
-    /// remaining tangent legs. Equals the total remaining task distance
-    /// the pilot still has to fly. Returns 0 once the pilot has entered
-    /// the goal cylinder (task complete).
+    /// Optimal-route distance from pilot to goal, in meters. Equals
+    /// the total remaining task distance. Returns 0 once the pilot has
+    /// entered the goal cylinder.
     ///
-    /// Uses the same "close-to-next" stabilisation as distanceToNext:
-    /// when the pilot is within 2×radius of the next TP, we compute
-    /// `(straight-line to perimeter) + (optimum distance from TP center
-    /// to goal)` rather than running the full bisector refinement with
-    /// the pilot as a near-coincident anchor (which oscillates).
+    /// Computed as a simple sum:
+    ///   pilot → next TP (straight-line to perimeter, or 0 if inside)
+    /// + remaining per-leg optimum distances (same algorithm that
+    ///   `cumulativeOptimumDistanceTo` uses for the task list)
+    ///
+    /// This is deliberately NOT the full bisector tangent refinement.
+    /// The bisector approach produces "jumps" in the displayed number
+    /// whenever a TP is tagged and falls out of the remaining list:
+    /// the optimum route gets recomputed against a different set of
+    /// anchors and the distance steps discontinuously. For the pilot,
+    /// that's confusing — they expect the number to fall smoothly as
+    /// they fly.
+    ///
+    /// The per-leg sum is monotonically decreasing (barring GPS jitter
+    /// near cylinder edges), matches what the task list shows, and
+    /// doesn't change when a TP is reached — the "ahead of me" legs
+    /// simply get one shorter.
     func distanceToGoal(from pilot: CLLocationCoordinate2D) -> Double? {
         guard let goal = turnpoints.last else { return nil }
         if isInsideCylinder(pilot: pilot, tp: goal) { return 0 }
@@ -373,23 +495,29 @@ final class CompetitionTask: ObservableObject, Codable {
             // measure from current position to goal center.
             return Self.haversine(pilot, goal.coordinate)
         }
+
+        // First leg: pilot to next TP's boundary (or 0 if already
+        // inside it, using entry-cylinder semantics). Takes sign into
+        // account for SSS (exit): distance to SSS boundary from inside
+        // is `radius - dCenter`.
         let dCenterNext = Self.haversine(pilot, next.coordinate)
-        if dCenterNext < next.radiusM * 2 {
-            // Stable branch: pilot→perimeter, then the optimum distance
-            // from the NEXT TP's center through the remaining task.
-            let toPerim = max(0, dCenterNext - next.radiusM)
-            let rest = optimumDistanceFrom(tpIndex: turnpointIndex(next),
-                                            includingStart: false)
-            return toPerim + rest
+        let firstLeg: Double
+        if next.type == .sss {
+            firstLeg = max(0, next.radiusM - dCenterNext)
+        } else {
+            firstLeg = abs(dCenterNext - next.radiusM)
         }
 
-        let pts = optimalRemainingPoints(from: pilot)
-        guard pts.count >= 2 else { return nil }
-        var total = 0.0
-        for i in 0..<(pts.count - 1) {
-            total += Self.haversine(pts[i], pts[i + 1])
+        // Remaining legs: per-leg optimum from next TP through all the
+        // unreached TPs (inclusive), minus the next-TP anchor itself.
+        guard let nextIdx = turnpoints.firstIndex(where: { $0.id == next.id })
+        else { return firstLeg }
+        var rest = 0.0
+        for i in (nextIdx + 1)..<turnpoints.count {
+            rest += legOptimumDistance(fromIndex: i - 1, toIndex: i)
         }
-        return total
+
+        return firstLeg + rest
     }
 
     /// Index of `tp` within the task's turnpoint array, or -1 if not found.
