@@ -62,7 +62,10 @@ enum TaskQRCodec {
 
     /// Encode task in XCTrack v2 format: "XCTSK:" + JSON with polyline-encoded
     /// turnpoints. Per XCTrack spec, v2 puts all coordinate data in compact
-    /// string "z" fields, matching what Flyskyhy produces.
+    /// string "z" fields, matching what Flyskyhy produces. Timing info
+    /// (SSS open / goal deadline) is also included so a round-trip
+    /// export → scan preserves it — without this, importing your own
+    /// shared QR drops the start and deadline clocks.
     private static func encodeXCTrackV2(task: CompetitionTask) -> String {
         var turnpointsV2: [[String: Any]] = []
         for tp in task.turnpoints {
@@ -85,11 +88,29 @@ enum TaskQRCodec {
             }
             turnpointsV2.append(tpObj)
         }
-        let root: [String: Any] = [
+        var root: [String: Any] = [
             "taskType": "CLASSIC",
             "version":  2,
             "t":        turnpointsV2,
         ]
+        // SSS timing — v2 stores the first (and only) open time in
+        // root.s.g[]. We also set s.d=1 (multi-start disabled) and
+        // s.t=1 (RACE type) to keep the payload interpretable by
+        // other XCTrack readers.
+        if let start = task.taskStartTime {
+            root["s"] = [
+                "g": [formatXCTrackTime(start)],
+                "d": 1,
+                "t": 1,
+            ] as [String: Any]
+        }
+        // Goal deadline — v2 root.g.d.
+        if let deadline = task.taskDeadline {
+            root["g"] = [
+                "d": formatXCTrackTime(deadline),
+                "t": 0,
+            ] as [String: Any]
+        }
         guard let data = try? JSONSerialization.data(
                 withJSONObject: root,
                 options: [.sortedKeys]),
@@ -98,6 +119,18 @@ enum TaskQRCodec {
             return "XCTSK:{}"
         }
         return "XCTSK:" + json
+    }
+
+    /// Format a `Date` as XCTrack's "HH:MM:SSZ" UTC time-of-day string.
+    /// Inverse of `parseXCTrackTime` in the decoder.
+    private static func formatXCTrackTime(_ date: Date) -> String {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "UTC")!
+        let comps = cal.dateComponents([.hour, .minute, .second], from: date)
+        let hh = comps.hour ?? 0
+        let mm = comps.minute ?? 0
+        let ss = comps.second ?? 0
+        return String(format: "%02d:%02d:%02dZ", hh, mm, ss)
     }
 
     /// Encode a single turnpoint's 4 values as a polyline string.

@@ -117,6 +117,7 @@ enum L10n {
             // Competition task
             "competition_task":    "Yarışma Görevi",
             "task_distance":       "Görev Mesafesi",
+            "task_route":          "Rota",
             "turnpoint_count":     "Turnpoint Sayısı",
             "task_timing":         "Zamanlama",
             "task_start":          "Görev Başlangıcı",
@@ -294,6 +295,7 @@ enum L10n {
             // Competition task
             "competition_task":    "Competition Task",
             "task_distance":       "Task Distance",
+            "task_route":          "Route",
             "turnpoint_count":     "Turnpoint Count",
             "task_timing":         "Timing",
             "task_start":          "Task Start",
