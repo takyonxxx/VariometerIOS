@@ -9,19 +9,19 @@ Yamaç paraşütü ve planör pilotları için SwiftUI ile yazılmış, **serbes
 ## Ekran Görüntüleri
 
 <p align="center">
-  <img src="docs/screenshots/01-map-view.png" alt="Yarışma modu — ana ekran" width="220">
+  <img src="docs/screenshots/competition-live-panel.png" alt="Yarışma modu — ana ekran" width="220">
   &nbsp;
-  <img src="docs/screenshots/02-instrument-view.png" alt="Serbest uçuş modu — enstrüman paneli" width="220">
+  <img src="docs/screenshots/competition-task-editor.png" alt="Yarışma görevi editörü" width="220">
   &nbsp;
-  <img src="docs/screenshots/03-settings.png" alt="Ayarlar" width="220">
+  <img src="docs/screenshots/task-qr-share.png" alt="Task QR paylaşımı" width="220">
   &nbsp;
   <img src="docs/screenshots/flight-records.png" alt="Uçuş kayıtları" width="220">
 </p>
 
 <p align="center">
   <i>1. <b>Yarışma layout</b> — vario (sol üst), HEDEF oku (sağ üst), yer hızı/rakım, sonraki TP / goal mesafesi, harita (altta) üzerinde rüzgâr kadranı + termik radarı overlay, saat/pil alt satırda.</i><br><br>
-  <i>2. <b>Serbest uçuş layout</b> — büyük vario sol üst (3 satır), rakım + yer hızı sağda (1.5'ar satır), tam-ekran harita altta, wind/radar overlay. Task kartları yok.</i><br><br>
-  <i>3. <b>Ayarlar</b> — ses, birim, pilot/glider, LiveTrack24, <b>Toolbar Layout</b> (sürükle-sırala + swipe-to-delete + Reset to Default).</i><br><br>
+  <i>2. <b>Yarışma Görevi editörü</b> — QR tara / QR paylaş, turnpoint listesi (tip + yarıçap + kümülatif mesafe), start time / deadline, toplam optimum mesafe.</i><br><br>
+  <i>3. <b>Task QR paylaşımı</b> — <code>variotb://task?data=&lt;base64&gt;</code> formatında QR kod. iOS kamera tarayınca doğrudan Vario TB'yi açar.</i><br><br>
   <i>4. <b>Uçuş kayıtları</b> — <code>Documents/Flights/*.igc</code> (gerçek uçuş: mavi uçak ikonu) + <code>Documents/Waypoints/thermals_*.cup</code> (sarı pin ikonu). <b>SIM etiketli dosyalar</b> simülatör kayıtlarıdır. Dosya başına paylaş ikonu, swipe-to-delete, üstte <b>Share All / Delete All</b> toplu işlemler.</i>
 </p>
 
