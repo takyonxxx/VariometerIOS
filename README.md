@@ -9,13 +9,15 @@ Yamaç paraşütü ve planör pilotları için SwiftUI ile yazılmış, **serbes
 ## Ekran Görüntüleri
 
 <p align="center">
-  <img src="docs/screenshots/competition-live-panel.png" alt="Yarışma modu — ana ekran" width="220">
-  &nbsp;
-  <img src="docs/screenshots/competition-task-editor.png" alt="Yarışma görevi editörü" width="220">
-  &nbsp;
-  <img src="docs/screenshots/task-qr-share.png" alt="Task QR paylaşımı" width="220">
-  &nbsp;
-  <img src="docs/screenshots/flight-records.png" alt="Uçuş kayıtları" width="220">
+  <img src="docs/screenshots/competition-live-panel.png" alt="Yarışma modu — ana ekran" width="260">
+  &nbsp;&nbsp;
+  <img src="docs/screenshots/competition-task-editor.png" alt="Yarışma görevi editörü" width="260">
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/task-qr-share.png" alt="Task QR paylaşımı" width="260">
+  &nbsp;&nbsp;
+  <img src="docs/screenshots/flight-records.png" alt="Uçuş kayıtları" width="260">
 </p>
 
 <p align="center">
