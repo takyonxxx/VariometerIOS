@@ -142,6 +142,23 @@ final class AppSettings: ObservableObject {
     @AppStorage("useBarometer")       var useBarometer: Bool = true
     @AppStorage("thermalMemoryRadiusM") var thermalMemoryRadiusM: Double = 1500
 
+    /// Auto-start IGC recording threshold: ground speed in km/h that
+    /// must be sustained (see autoStartSpeedSeconds) before recording
+    /// is started automatically. Below this value (e.g. casually
+    /// walking around launch at 4 km/h) auto-start stays armed but
+    /// dormant. Default 5 km/h matches Flymaster's industry-standard
+    /// "Start Speed" — slow enough to catch the first strides of a
+    /// foot launch, fast enough that standing still or shuffling
+    /// around with the wing won't start a recording. The pilot can
+    /// always hand-start / hand-stop via the panel's Recording
+    /// Toggle card.
+    @AppStorage("autoStartSpeedKmh")    var autoStartSpeedKmh: Double = 5
+    /// How long the speed signal must hold continuously before
+    /// auto-start fires, in seconds. 3 s is enough to filter a single
+    /// GPS speed glitch but short enough that the run-up is captured
+    /// in the IGC almost from the first stride.
+    @AppStorage("autoStartSpeedSeconds") var autoStartSpeedSeconds: Double = 3
+
     // Map & background
     @AppStorage("showMapBackground")  var showMapBackground: Bool = false
     @AppStorage("backgroundTheme")    var backgroundThemeRaw: String = BackgroundTheme.nightAviation.rawValue
@@ -209,6 +226,10 @@ final class AppSettings: ObservableObject {
     // Pilot info (used in IGC header and live-tracking)
     @AppStorage("pilotFirstName")     var pilotFirstName: String = ""
     @AppStorage("pilotLastName")      var pilotLastName: String = ""
+    /// CIVL pilot ID. Optional. When set, written to the IGC header
+    /// (HFPLT line, "(CIVLID:NNNNN)") and as a dedicated LXVTCIVLID
+    /// L-record so CIVL-WPRS scoring tools can index the flight.
+    @AppStorage("pilotCIVLID")        var pilotCIVLID: String = ""
     @AppStorage("gliderBrandModel")   var gliderBrandModel: String = ""
     @AppStorage("gliderCertification") var gliderCertificationRaw: String = GliderCertification.none.rawValue
     @AppStorage("gliderType")          var gliderTypeRaw: String = GliderType.paraglider.rawValue

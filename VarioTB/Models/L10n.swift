@@ -33,6 +33,32 @@ enum L10n {
             "delete_all_message": "%d dosya kalıcı olarak silinecek.",
             "cancel":           "İptal",
 
+            // Flight detail screen
+            "flight_parse_error":  "Dosya okunamadı.",
+            "flight_timing":       "ZAMAN",
+            "flight_start":        "Başlangıç",
+            "flight_end":          "Bitiş",
+            "flight_duration":     "Süre",
+            "flight_fixes":        "Fix Sayısı",
+            "flight_altitude":     "İRTİFA",
+            "flight_alt_min":      "Min",
+            "flight_alt_max":      "Max",
+            "flight_alt_gain":     "Fark",
+            "flight_total_climb":  "Toplam Tırmanış",
+            "flight_best_climb":   "En İyi Tırmanış Hızı",
+            "flight_distance":     "MESAFE & HIZ",
+            "flight_straight_line": "Düz Mesafe",
+            "flight_total_track":  "Toplam Track",
+            "flight_max_speed":    "Maks. Hız",
+            "flight_avg_speed":    "Ort. Hız",
+            "flight_pilot":        "Pilot",
+            "flight_glider":       "Kanat",
+            "flight_glider_id":    "Kanat ID",
+            "flight_device":       "CİHAZ",
+            "flight_manufacturer": "Üretici Kodu",
+            "flight_firmware":     "Firmware",
+            "flight_hardware":     "Donanım",
+
             // Telemetry
             "waiting_gps":      "GPS bekleniyor…",
             "altitude":         "İRTİFA",
@@ -48,6 +74,7 @@ enum L10n {
             "pilot_info":       "Pilot Bilgileri",
             "first_name":       "Ad",
             "last_name":        "Soyad",
+            "civl_id":          "CIVL Pilot ID",
             "glider_brand":     "Kanat Marka / Model",
             "glider_cert":      "Kanat Sertifikası",
             "glider_type":      "Kanat Tipi",
@@ -98,6 +125,12 @@ enum L10n {
             "thermal_radar":    "Termik Radarı",
             "coverage":         "Kapsama",
             "coverage_hint":    "Termik radarındaki uzaklık ölçeği",
+
+            // Auto-record (IGC)
+            "auto_record":          "Otomatik Kayıt (IGC)",
+            "auto_record_speed":    "Başlatma Hız Eşiği",
+            "auto_record_duration": "Süre Eşiği",
+            "auto_record_hint":     "Yer hızı bu eşiği bu süre boyunca aşarsa IGC kaydı otomatik başlar. Flymaster'ın endüstri standardı olan 5 km/h × 3 sn varsayılan değerleri çoğu pilot için uygundur — yamacda yürürken kayıt başlamaz, kalkış koşusunda anında yakalanır. Hike-and-fly yapanlar eşiği yükseltebilir.",
 
             // Sensors
             "sensors":          "Sensörler",
@@ -211,6 +244,32 @@ enum L10n {
             "delete_all_message": "%d files will be permanently deleted.",
             "cancel":           "Cancel",
 
+            // Flight detail screen
+            "flight_parse_error":  "Could not read file.",
+            "flight_timing":       "TIMING",
+            "flight_start":        "Start",
+            "flight_end":          "End",
+            "flight_duration":     "Duration",
+            "flight_fixes":        "Fix Count",
+            "flight_altitude":     "ALTITUDE",
+            "flight_alt_min":      "Min",
+            "flight_alt_max":      "Max",
+            "flight_alt_gain":     "Gain",
+            "flight_total_climb":  "Total Climb",
+            "flight_best_climb":   "Best Climb Rate",
+            "flight_distance":     "DISTANCE & SPEED",
+            "flight_straight_line": "Straight Line",
+            "flight_total_track":  "Total Track",
+            "flight_max_speed":    "Max Speed",
+            "flight_avg_speed":    "Avg Speed",
+            "flight_pilot":        "Pilot",
+            "flight_glider":       "Glider",
+            "flight_glider_id":    "Glider ID",
+            "flight_device":       "DEVICE",
+            "flight_manufacturer": "Manufacturer Code",
+            "flight_firmware":     "Firmware",
+            "flight_hardware":     "Hardware",
+
             // Telemetry
             "waiting_gps":      "Waiting for GPS…",
             "altitude":         "ALT",
@@ -226,6 +285,7 @@ enum L10n {
             "pilot_info":       "Pilot Information",
             "first_name":       "First Name",
             "last_name":        "Last Name",
+            "civl_id":          "CIVL Pilot ID",
             "glider_brand":     "Glider Brand / Model",
             "glider_cert":      "Glider Certification",
             "glider_type":      "Glider Type",
@@ -276,6 +336,12 @@ enum L10n {
             "thermal_radar":    "Thermal Radar",
             "coverage":         "Coverage",
             "coverage_hint":    "Distance scale shown on the thermal radar",
+
+            // Auto-record (IGC)
+            "auto_record":          "Auto-Record (IGC)",
+            "auto_record_speed":    "Start Speed Threshold",
+            "auto_record_duration": "Time Threshold",
+            "auto_record_hint":     "IGC recording starts automatically when ground speed stays above this threshold for the given duration. The default 5 km/h × 3 s matches Flymaster's industry-standard Start Speed — slow enough to catch a foot launch on the first strides, fast enough to ignore walking around the launch. Hike-and-fly pilots may want to raise it.",
 
             // Sensors
             "sensors":          "Sensors",

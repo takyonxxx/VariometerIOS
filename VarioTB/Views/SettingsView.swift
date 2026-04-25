@@ -32,6 +32,7 @@ struct SettingsView: View {
                 displaySection
                 toolbarSection
                 gpsSection
+                autoRecordSection
                 thermalSection
                 sensorsSection
                 aboutSection
@@ -71,6 +72,8 @@ struct SettingsView: View {
                 .textContentType(.givenName)
             TextField(L10n.string("last_name"), text: $settings.pilotLastName)
                 .textContentType(.familyName)
+            TextField(L10n.string("civl_id"), text: $settings.pilotCIVLID)
+                .keyboardType(.numberPad)
             TextField(L10n.string("glider_brand"), text: $settings.gliderBrandModel)
             Picker(L10n.string("glider_cert"), selection: Binding(
                 get: { settings.gliderCertification },
@@ -382,6 +385,28 @@ struct SettingsView: View {
             )) {
                 ForEach(CoordinateFormat.allCases) { Text($0.rawValue).tag($0) }
             }
+        }
+    }
+
+    private var autoRecordSection: some View {
+        Section(L10n.string("auto_record")) {
+            HStack {
+                Text(L10n.string("auto_record_speed"))
+                Spacer()
+                Text("\(Int(settings.autoStartSpeedKmh)) km/h")
+                    .foregroundColor(.secondary)
+            }
+            Slider(value: $settings.autoStartSpeedKmh, in: 5...30, step: 1)
+            HStack {
+                Text(L10n.string("auto_record_duration"))
+                Spacer()
+                Text("\(Int(settings.autoStartSpeedSeconds)) s")
+                    .foregroundColor(.secondary)
+            }
+            Slider(value: $settings.autoStartSpeedSeconds, in: 1...10, step: 1)
+            Text(L10n.string("auto_record_hint"))
+                .font(.caption)
+                .foregroundColor(.secondary)
         }
     }
 

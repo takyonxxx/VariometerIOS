@@ -26,6 +26,8 @@
 		89316BD084304171B94B04E6 /* WaypointsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 992177F0107F4A90A7CE3EEA /* WaypointsView.swift */; };
 		9C15AC8A2F9BCC020044CB67 /* task_alarm.wav in Resources */ = {isa = PBXBuildFile; fileRef = 9C15AC892F9BCC020044CB67 /* task_alarm.wav */; };
 		9C15AC8C2F9BCF8D0044CB67 /* reach_chime.wav in Resources */ = {isa = PBXBuildFile; fileRef = 9C15AC8B2F9BCF8D0044CB67 /* reach_chime.wav */; };
+		9C15AC902F9CDBDB0044CB67 /* IGCFlightSummary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C15AC8F2F9CDBDB0044CB67 /* IGCFlightSummary.swift */; };
+		9C15AC922F9CDBE60044CB67 /* FlightDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C15AC912F9CDBE60044CB67 /* FlightDetailView.swift */; };
 		9CD0604E2F9A1ED9009415D7 /* FlightSimulator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CD0604D2F9A1ED9009415D7 /* FlightSimulator.swift */; };
 		9CD060522F9A2E47009415D7 /* IGCRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CD060502F9A2E47009415D7 /* IGCRecorder.swift */; };
 		9CD060532F9A2E47009415D7 /* WaypointExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CD060512F9A2E47009415D7 /* WaypointExporter.swift */; };
@@ -77,6 +79,8 @@
 		992177F0107F4A90A7CE3EEA /* WaypointsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WaypointsView.swift; sourceTree = "<group>"; };
 		9C15AC892F9BCC020044CB67 /* task_alarm.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = task_alarm.wav; sourceTree = "<group>"; };
 		9C15AC8B2F9BCF8D0044CB67 /* reach_chime.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = reach_chime.wav; sourceTree = "<group>"; };
+		9C15AC8F2F9CDBDB0044CB67 /* IGCFlightSummary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IGCFlightSummary.swift; sourceTree = "<group>"; };
+		9C15AC912F9CDBE60044CB67 /* FlightDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlightDetailView.swift; sourceTree = "<group>"; };
 		9CD0604D2F9A1ED9009415D7 /* FlightSimulator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlightSimulator.swift; sourceTree = "<group>"; };
 		9CD0604F2F9A2E47009415D7 /* FlightRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlightRecorder.swift; sourceTree = "<group>"; };
 		9CD060502F9A2E47009415D7 /* IGCRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IGCRecorder.swift; sourceTree = "<group>"; };
@@ -136,6 +140,7 @@
 		2D8C263AFCD1453387D5A0DB /* Managers */ = {
 			isa = PBXGroup;
 			children = (
+				9C15AC8F2F9CDBDB0044CB67 /* IGCFlightSummary.swift */,
 				9CD060722F9A5180009415D7 /* FAITriangleDetector.swift */,
 				9CD060612F9A3C60009415D7 /* LiveTrack24Tracker.swift */,
 				9CD0605D2F9A393A009415D7 /* KeychainStore.swift */,
@@ -188,6 +193,7 @@
 		F0EFA735BFEA42B19A07D83A /* Views */ = {
 			isa = PBXGroup;
 			children = (
+				9C15AC912F9CDBE60044CB67 /* FlightDetailView.swift */,
 				9CD060782F9A6334009415D7 /* CompetitionTaskView.swift */,
 				9CD060792F9A6334009415D7 /* TurnpointEditorView.swift */,
 				9CD060742F9A51F7009415D7 /* FAITriangleHUD.swift */,
@@ -342,7 +348,9 @@
 				16F6C3798FAC4709BACD839F /* Waypoint.swift in Sources */,
 				A79C0C092C1D4E4E8E244398 /* TaskQRCodec.swift in Sources */,
 				D11AD1BB9F714985BC5AFA2D /* WaypointFileParser.swift in Sources */,
+				9C15AC902F9CDBDB0044CB67 /* IGCFlightSummary.swift in Sources */,
 				832B35A0701C44FC97A0490D /* QRScannerView.swift in Sources */,
+				9C15AC922F9CDBE60044CB67 /* FlightDetailView.swift in Sources */,
 				0586122A3E26438ABD6CBAEB /* WaypointPickerView.swift in Sources */,
 				693C7489B6BE40B98DD211F5 /* WaypointListDetailView.swift in Sources */,
 				89316BD084304171B94B04E6 /* WaypointsView.swift in Sources */,

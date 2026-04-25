@@ -20,6 +20,13 @@ enum InstrumentKind: String, Codable, CaseIterable, Identifiable {
     case distToNext    = "distToNext"       // km to next un-reached TP
     case distToGoal    = "distToGoal"       // km to task goal
     case distToTakeoff = "distToTakeoff"    // km back to takeoff / flight start
+    /// Recording start/stop button. Big tap target showing record
+    /// status — black/white when idle, pulsing red while an IGC is
+    /// being written. Manual override of the auto-start logic so
+    /// pilots can force-start before takeoff (e.g. test flight) or
+    /// force-stop early (e.g. landed but want to walk further before
+    /// closing the file).
+    case recordingToggle = "recordingToggle"
 
     var id: String { rawValue }
 
@@ -40,6 +47,7 @@ enum InstrumentKind: String, Codable, CaseIterable, Identifiable {
         case .distToNext:    return "Sonraki TP Mesafe"
         case .distToGoal:    return "Goal Mesafe"
         case .distToTakeoff: return "Takeoff Mesafe"
+        case .recordingToggle: return "Kayıt Düğmesi"
         }
     }
 
@@ -60,6 +68,7 @@ enum InstrumentKind: String, Codable, CaseIterable, Identifiable {
         case .distToNext:    return "arrow.forward.to.line"
         case .distToGoal:    return "flag.checkered"
         case .distToTakeoff: return "house.fill"
+        case .recordingToggle: return "record.circle"
         }
     }
 }

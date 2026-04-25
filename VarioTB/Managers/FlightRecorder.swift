@@ -33,15 +33,23 @@ final class FlightRecorder: ObservableObject {
     weak var varioMgr: VarioManager?
     weak var simulator: FlightSimulator?
     weak var settings: AppSettings?
+    /// The currently-loaded competition task. Only used to read
+    /// `taskStartTime` when stamping IGC B-records during a simulator
+    /// run — so the recorded timestamps line up with the simulated
+    /// competition clock instead of real wall-clock. `nil` (or a task
+    /// with no start time) falls back to wall-clock.
+    weak var task: CompetitionTask?
 
     func attach(locationManager: LocationManager,
                 varioManager: VarioManager,
                 simulator: FlightSimulator,
-                settings: AppSettings) {
+                settings: AppSettings,
+                task: CompetitionTask) {
         self.locationMgr = locationManager
         self.varioMgr = varioManager
         self.simulator = simulator
         self.settings = settings
+        self.task = task
 
         // Expose this instance to App Intents
         FlightRecorder.shared = self
@@ -58,18 +66,18 @@ final class FlightRecorder: ObservableObject {
     // MARK: - Simulator lifecycle hook
 
     private func handleSimulatorChange(running: Bool) {
-        if running {
-            // If a real flight was recording, stop and save it first
-            if isRecording && !isSimulatedFlight {
-                stopFlight()
-            }
-            // Start simulated recording
-            startFlight(simulated: true)
-        } else {
-            // Simulator ended — stop the simulated recording and export waypoints
-            if isRecording && isSimulatedFlight {
-                stopFlight()
-            }
+        // Simulated flights don't produce IGC files or waypoint exports.
+        // Recording is reserved for real flights only — a sim run is a
+        // training / preview tool, not a record-worthy flight.
+        //
+        // The only thing we still do here is stop a real recording in
+        // the rare case the user kicks off the sim while a real flight
+        // is being logged. We don't restart it on sim-stop because the
+        // sim can have moved the simulated GPS coordinate far from the
+        // real takeoff site; if the pilot resumes real flying afterward
+        // the auto-start logic will pick it back up.
+        if running, isRecording, !isSimulatedFlight {
+            stopFlight()
         }
     }
 
@@ -77,14 +85,37 @@ final class FlightRecorder: ObservableObject {
 
     /// Start a new flight recording. If one is already active, no-op.
     /// Pass `simulated: true` when the simulator is producing the data.
+    ///
+    /// IGC recordings of simulator-driven flights are deliberately
+    /// disabled: a sim run is a training / preview tool, the data is
+    /// synthetic, and a sim "flight" uploaded to XContest / Leonardo
+    /// would be misleading. If a Siri intent or panel button calls
+    /// this while the simulator is running, we no-op silently — the
+    /// UI dims its REC controls in this state, so the silent failure
+    /// matches what the user already sees.
     func startFlight(simulated: Bool = false) {
         guard !isRecording else { return }
+        if simulator?.isRunning == true {
+            // Sim is producing data — refuse to record. The pilot can
+            // start a recording the moment they stop the simulator.
+            return
+        }
         // Build pilot + glider info from settings
         let pilot = settings?.pilotFullName ?? "tbiliyor"
+        let civlID = settings?.pilotCIVLID ?? ""
         let glider = buildGliderString()
+        // Use brand+model alone (without certification suffix) as the
+        // glider ID line if available — gives parsers something
+        // useful in HFGID without leaking the cert string twice.
+        let gliderID = settings?.gliderBrandModel ?? ""
         igc = IGCRecorder(pilotName: pilot,
+                          pilotCIVLID: civlID,
                           gliderType: glider,
-                          gliderID: "VarioTB")
+                          gliderID: gliderID,
+                          gliderCompID: "",
+                          gliderCompClass: "Paragliding",
+                          firmwareVersion: "1.0.0",
+                          hardwareVersion: "iPhone")
         igc.start(simulated: simulated)
         currentIGCURL = igc.fileURL
         isSimulatedFlight = simulated
@@ -117,21 +148,15 @@ final class FlightRecorder: ObservableObject {
         igc.stop()
         isRecording = false
 
-        // Export thermals as waypoint file
-        // For simulated flights: export simulated thermals with _SIM tag
-        // For real flights: export real thermals only
+        // Export real thermals collected during this flight as a CUP
+        // waypoint file. Simulated thermals are never recorded here:
+        // the simulator-lifecycle hook prevents `startFlight` from ever
+        // being called with simulated=true, so we only see real fixes.
         var wpURL: URL? = nil
         if let thermals = varioMgr?.thermals {
-            if isSimulatedFlight {
-                let simThermals = thermals.filter { $0.source == .simulated }
-                if !simThermals.isEmpty {
-                    wpURL = WaypointExporter.exportThermals(simThermals, simulated: true)
-                }
-            } else {
-                let realThermals = thermals.filter { $0.source == .real }
-                if !realThermals.isEmpty {
-                    wpURL = WaypointExporter.exportThermals(realThermals, simulated: false)
-                }
+            let realThermals = thermals.filter { $0.source == .real }
+            if !realThermals.isEmpty {
+                wpURL = WaypointExporter.exportThermals(realThermals, simulated: false)
             }
         }
         lastExportedWaypointURL = wpURL
@@ -150,11 +175,33 @@ final class FlightRecorder: ObservableObject {
 
     private func writeFix() {
         guard let lm = locationMgr, let coord = lm.coordinate, lm.hasFix else { return }
-        // During simulated flight we record the simulator's injected values,
-        // which flow through locationMgr exactly like real GPS data.
+        // During simulated flight we record the simulator's injected
+        // values, which flow through locationMgr exactly like real
+        // GPS data. For IGC timestamps: if the sim is running, the
+        // task has a start time set, AND the pilot has crossed the
+        // SSS gate, stamp B-records with the *simulated* competition
+        // clock so the resulting .igc reads as a coherent 30 km/h
+        // flight beginning at taskStart. Before SSS-cross (lead-in
+        // flight) and in any other case, fall back to wall-clock —
+        // which IGCRecorder defaults to.
+        let stampDate: Date = {
+            if let sim = simulator,
+               let simDate = sim.simulatedClockDate(
+                   taskStartTime: task?.taskStartTime,
+                   sssReachedAt: task?.sssReachedAt) {
+                return simDate
+            }
+            return Date()
+        }()
+        // FXA = horizontal accuracy in metres. Core Location reports
+        // -1 when the value is invalid; clamp that to a defensive 99
+        // so the field stays well-formed but signals "not great".
+        let fxa = lm.horizontalAccuracy > 0 ? lm.horizontalAccuracy : 99.0
         igc.appendFix(coordinate: coord,
                       pressureAltitudeM: lm.fusedAltitude,
-                      gpsAltitudeM: lm.gpsAltitude)
+                      gpsAltitudeM: lm.gpsAltitude,
+                      fixAccuracyM: fxa,
+                      date: stampDate)
     }
 
     // MARK: - File management
@@ -185,15 +232,15 @@ final class FlightRecorder: ObservableObject {
         try? FileManager.default.removeItem(at: url)
     }
 
-    /// Export thermals on demand (for mid-flight share).
+    /// Export thermals on demand (for mid-flight share). Only real
+    /// thermals are exported — simulated runs never produce waypoint
+    /// files, even mid-flight.
     @discardableResult
     func exportCurrentThermalsAsWaypoints() -> URL? {
         guard let thermals = varioMgr?.thermals else { return nil }
-        let filtered = isSimulatedFlight
-            ? thermals.filter { $0.source == .simulated }
-            : thermals.filter { $0.source == .real }
-        guard !filtered.isEmpty else { return nil }
-        let url = WaypointExporter.exportThermals(filtered, simulated: isSimulatedFlight)
+        let realThermals = thermals.filter { $0.source == .real }
+        guard !realThermals.isEmpty else { return nil }
+        let url = WaypointExporter.exportThermals(realThermals, simulated: false)
         lastExportedWaypointURL = url
         return url
     }

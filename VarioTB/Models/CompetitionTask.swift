@@ -154,6 +154,16 @@ final class CompetitionTask: ObservableObject, Codable {
     /// convention (pilots re-enter the pre-start zone at launch).
     @Published var reachedTPIds: Set<UUID> = []
 
+    /// Wall-clock timestamp at the moment the SSS gate is reached
+    /// (cylinder-exit for an exit-type SSS, cylinder-entry otherwise).
+    /// Drives the simulated competition clock — the clock card stays
+    /// on real wall-clock time until SSS is crossed, then snaps to
+    /// `taskStartTime` and ticks forward `FlightSimulator.timeScale` ×
+    /// real-time from that moment. nil until SSS is reached, or when
+    /// the task has no SSS turnpoint at all. Cleared by `resetProgress`
+    /// so a re-flown task starts fresh.
+    @Published var sssReachedAt: Date? = nil
+
     /// Pumped every time a new turnpoint is reached. Views observe this
     /// to trigger reach-feedback animations (colour flash, haptic, etc).
     /// nil at startup; set to the TP's id inside updateProgress when a
@@ -196,6 +206,7 @@ final class CompetitionTask: ObservableObject, Codable {
     /// into the distance/bearing calculations.
     func resetProgress() {
         reachedTPIds.removeAll()
+        sssReachedAt = nil
         lastReachEvent = nil
         nextTPExitedSinceLastReach = true
         // Timing notifications: allow start-gate and deadline events
@@ -375,6 +386,7 @@ final class CompetitionTask: ObservableObject, Codable {
             // the exit.
             if d > next.radiusM + Self.gpsToleranceM {
                 reachedTPIds.insert(next.id)
+                if next.type == .sss { sssReachedAt = Date() }
                 nextTPExitedSinceLastReach = false
                 lastReachEvent = next.id
                 ChimePlayer.shared.playReachChime()
@@ -400,6 +412,7 @@ final class CompetitionTask: ObservableObject, Codable {
         if nextTPExitedSinceLastReach,
            d <= next.radiusM + Self.gpsToleranceM {
             reachedTPIds.insert(next.id)
+            if next.type == .sss { sssReachedAt = Date() }
             // Reset the gate so the *next* TP has to be exited before
             // its own reach counts.
             nextTPExitedSinceLastReach = false

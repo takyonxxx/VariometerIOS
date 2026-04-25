@@ -24,6 +24,14 @@ struct PanelView: View {
     // Map-related bindings passed through to the MapCard
     @ObservedObject var fai: FAITriangleDetector
     @ObservedObject var task: CompetitionTask
+    /// The flight simulator. Used by the clock card to show simulated
+    /// competition time (running from `task.taskStartTime` at
+    /// `FlightSimulator.timeScale` × real-time) while a sim is in
+    /// progress, and to fall back to wall-clock when it's not.
+    @ObservedObject var simulator: FlightSimulator
+    /// Flight recorder — used by the Recording Toggle card for status
+    /// (idle / recording) and to start/stop IGC recording on tap.
+    @ObservedObject var recorder: FlightRecorder
     let fitTriangleToken: UUID?
     let fitTaskToken: UUID?
     @Binding var autoFollow: Bool
@@ -603,7 +611,7 @@ struct PanelView: View {
                          pilotCourseDeg: locationMgr.bestHeadingDeg,
                          radiusM: settings.thermalMemoryRadiusM)
         case .clock:
-            ClockCard()
+            ClockCard(simulator: simulator, task: task)
         case .battery:
             BatteryCard()
         case .distToNext:
@@ -629,6 +637,10 @@ struct PanelView: View {
                          meters: distanceToTakeoff,
                          color: .green,
                          systemIcon: "house.fill")
+        case .recordingToggle:
+            RecordingToggleCard(recorder: recorder,
+                                simulator: simulator,
+                                editMode: editMode)
         case .map:
             ZStack(alignment: .bottomTrailing) {
                 SatelliteMapView(coordinate: locationMgr.coordinate,
@@ -825,6 +837,13 @@ private struct CoordsCard: View {
 }
 
 private struct ClockCard: View {
+    /// Used to detect whether a sim is running and to compute the
+    /// compressed simulated wall-clock value during one.
+    @ObservedObject var simulator: FlightSimulator
+    /// Source of `taskStartTime` — the anchor the simulated clock
+    /// counts forward from.
+    @ObservedObject var task: CompetitionTask
+
     var body: some View {
         GeometryReader { geo in
             let scale = min(geo.size.width / 150.0, geo.size.height / 52.0)
@@ -832,6 +851,15 @@ private struct ClockCard: View {
             let iconSize = max(12.0, min(40.0, 16.0 * scale))
 
             TimelineView(.periodic(from: .now, by: 1)) { ctx in
+                // Show simulated competition time while the sim is
+                // running and the task has a start time anchor; fall
+                // back to real wall-clock otherwise (sim stopped, no
+                // task loaded, or task without a start time set).
+                let displayDate = simulator.simulatedClockDate(
+                    taskStartTime: task.taskStartTime,
+                    sssReachedAt: task.sssReachedAt
+                ) ?? ctx.date
+
                 ZStack {
                     RoundedRectangle(cornerRadius: 10)
                         .fill(Color.black.opacity(0.55))
@@ -839,7 +867,7 @@ private struct ClockCard: View {
                         Image(systemName: "clock.fill")
                             .font(.system(size: iconSize, weight: .bold))
                             .foregroundColor(.white.opacity(0.7))
-                        Text(Self.timeString(for: ctx.date))
+                        Text(Self.timeString(for: displayDate))
                             .font(.system(size: fontSize, weight: .heavy, design: .rounded))
                             .foregroundColor(.white)
                             .monospacedDigit()
@@ -905,10 +933,10 @@ private struct CourseCard: View {
             // at bottom corners. When rotated 180° the tip swings to
             // the bottom edge of the frame. If we make the frame
             // exactly as wide/tall as the card, the rotated tip kisses
-            // the card's rounded-rect border. Multiply by 0.55 to
+            // the card's rounded-rect border. Multiply by 0.60 to
             // leave a clear margin on all sides — enough that the
             // arrow never touches the frame at any rotation angle.
-            let arrowSize = min(geo.size.width, geo.size.height) * 0.55
+            let arrowSize = min(geo.size.width, geo.size.height) * 0.60
 
             ZStack {
                 RoundedRectangle(cornerRadius: 10)
@@ -961,7 +989,7 @@ private struct TrueHeadingCard: View {
             // Leave consistent margin so the rotated arrow tip never
             // touches the card's rounded-rect border (see CourseCard
             // for the geometry explanation).
-            let arrowSize = min(geo.size.width, geo.size.height) * 0.55
+            let arrowSize = min(geo.size.width, geo.size.height) * 0.60
 
             ZStack(alignment: .bottomTrailing) {
                 RoundedRectangle(cornerRadius: 10)
@@ -1142,6 +1170,121 @@ private struct BatteryCard: View {
         .onReceive(poll) { _ in
             level = UIDevice.current.batteryLevel
             state = UIDevice.current.batteryState
+        }
+    }
+}
+
+// MARK: - Recording Toggle Card
+
+/// Big tap target that starts and stops IGC flight recording. Idle state
+/// is a calm white "REC" badge with a record dot; while a recording is
+/// active the card flips to a strong red background and the dot pulses,
+/// giving instantly-visible feedback that the file is open and frames
+/// are being written.
+///
+/// This card is a manual override of the auto-start logic in ContentView:
+///   • Auto-start fires when sustained airborne signals (speed > 25 km/h
+///     for ≥5 s, or +0.5 m/s climb for ≥10 s, or +20 m altitude in 30 s)
+///     prove the pilot is actually flying.
+///   • The toggle lets the pilot force-start before any of those signals
+///     fire (e.g. ground handling, test flights, low-altitude soaring),
+///     and force-stop on landing without waiting for the app to give up.
+struct RecordingToggleCard: View {
+    @ObservedObject var recorder: FlightRecorder
+    /// Disables the toggle while the simulator is running. Sim data
+    /// is synthetic; we deliberately don't let it stream into an IGC
+    /// file. The card stays visible (just dimmed) so the pilot sees
+    /// it's still there but currently inert.
+    @ObservedObject var simulator: FlightSimulator
+    /// When true (panel edit mode is active) the card becomes a
+    /// passive visual: taps are ignored so the user can drag/resize
+    /// /delete the card without accidentally toggling recording.
+    let editMode: Bool
+    /// 0…1 phase used to pulse the red dot while recording. Driven by
+    /// a Timer rather than withAnimation so it keeps animating even
+    /// when other parts of the panel are mid-render.
+    @State private var pulse: Double = 0
+    private let pulseTimer = Timer.publish(every: 0.05, on: .main, in: .common).autoconnect()
+
+    var body: some View {
+        Button {
+            if recorder.isRecording {
+                _ = recorder.stopFlight()
+            } else {
+                recorder.startFlight()
+            }
+        } label: {
+            ZStack {
+                // Background: red while recording, near-black at idle.
+                // We use a strong red (.red is too pinkish in dark UI)
+                // so it reads as "live recording" at a glance even in
+                // bright sunlight on the takeoff.
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(recorder.isRecording
+                          ? Color(red: 0.85, green: 0.15, blue: 0.15)
+                          : Color.black.opacity(0.55))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .stroke(recorder.isRecording
+                                    ? Color.white.opacity(0.35)
+                                    : Color.white.opacity(0.12),
+                                    lineWidth: 1)
+                    )
+
+                VStack(spacing: 4) {
+                    // Pulsing dot. While recording, scale + opacity ride
+                    // a sine wave so the eye catches it from peripheral
+                    // vision; when idle, just a static outline.
+                    ZStack {
+                        Circle()
+                            .fill(recorder.isRecording
+                                  ? Color.white
+                                  : Color.white.opacity(0.7))
+                            .frame(width: 14, height: 14)
+                            .scaleEffect(recorder.isRecording
+                                         ? 1.0 + 0.25 * pulse
+                                         : 1.0)
+                            .opacity(recorder.isRecording
+                                     ? 0.7 + 0.3 * pulse
+                                     : 1.0)
+                        if !recorder.isRecording {
+                            // Hollow ring at idle — not a filled dot,
+                            // so the visual difference between "armed"
+                            // and "recording" is unmistakable.
+                            Circle()
+                                .stroke(Color.black, lineWidth: 2)
+                                .frame(width: 6, height: 6)
+                        }
+                    }
+                    Text(recorder.isRecording ? "REC" : "REC")
+                        .font(.system(size: 12, weight: .heavy, design: .rounded))
+                        .foregroundColor(recorder.isRecording
+                                         ? .white
+                                         : .white.opacity(0.85))
+                        .tracking(1)
+                    // Subtitle: "TAP TO STOP" while recording, the
+                    // word "KAYIT" while idle, so a glance tells you
+                    // both the current state AND the next action.
+                    Text(recorder.isRecording ? "DURDUR" : "KAYIT")
+                        .font(.system(size: 9, weight: .semibold, design: .rounded))
+                        .foregroundColor(recorder.isRecording
+                                         ? .white.opacity(0.85)
+                                         : .white.opacity(0.5))
+                        .tracking(1.5)
+                }
+            }
+        }
+        .buttonStyle(.plain)
+        .disabled(editMode || simulator.isRunning)
+        // Sim-active dim. Edit-mode does NOT dim — the card is fully
+        // visible during edit so the pilot can position it; only the
+        // tap is suppressed there. Sim-active is the case we want to
+        // visually communicate as "unavailable right now".
+        .opacity(simulator.isRunning ? 0.4 : 1.0)
+        .onReceive(pulseTimer) { _ in
+            // Sine in 0…1 with ~1.2 s period
+            let t = Date().timeIntervalSinceReferenceDate
+            pulse = (sin(t * 2 * .pi / 1.2) + 1) / 2
         }
     }
 }

@@ -27,10 +27,24 @@ struct TopBar: View {
                      ? String(format: "%.0f m", locationMgr.horizontalAccuracy)
                      : "No fix")
                     .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .lineLimit(1)
+                    .fixedSize()
             }
             .foregroundColor(locationMgr.hasFix ? .green : .orange)
             .padding(.horizontal, 8).padding(.vertical, 4)
             .background(Capsule().fill(Color.black.opacity(0.55)))
+
+            // Recording status pill — always visible, mirrors the GPS
+            // pill's pattern. Idle state is dim gray with a hollow
+            // record icon (recording is armed but inactive); active
+            // state is solid red with a filled circle that pulses,
+            // immediately catching the eye in peripheral vision so
+            // the pilot knows an IGC file is being written. Tappable
+            // toggle — same action as the panel's Recording Toggle
+            // card. Disabled while the simulator is running, since
+            // sim data is synthetic and shouldn't be recorded as a
+            // real flight.
+            RecordingStatusPill(recorder: recorder, simulator: simulator)
 
             // User-ordered items. We put a Spacer BEFORE the last item so
             // the last one hugs the right edge — mirroring how iOS system
@@ -110,6 +124,8 @@ struct TopBar: View {
                         .font(.system(size: 13, weight: .bold))
                     Text("SIM")
                         .font(.system(size: 11, weight: .heavy, design: .rounded))
+                        .lineLimit(1)
+                        .fixedSize()
                 }
                 .foregroundColor(simulator.isRunning
                                  ? .orange
@@ -142,6 +158,8 @@ struct TopBar: View {
                     if !task.turnpoints.isEmpty {
                         Text("\(task.turnpoints.count)")
                             .font(.system(size: 11, weight: .heavy, design: .rounded))
+                            .lineLimit(1)
+                            .fixedSize()
                     }
                 }
                 .foregroundColor(task.turnpoints.isEmpty
@@ -187,5 +205,90 @@ struct TimeNowView: View {
             .padding(.horizontal, 8).padding(.vertical, 4)
             .background(Capsule().fill(Color.black.opacity(0.55)))
             .onReceive(timer) { now = $0 }
+    }
+}
+
+/// Compact recording-state indicator next to the GPS pill in the top
+/// bar. Always visible — when idle it shows a dim hollow record icon
+/// + "REC" text in muted gray, signalling "recording is armed but
+/// nothing is being written"; when an IGC file is open it flips to a
+/// strong red background with a filled white dot that pulses, the
+/// same visual cue as the panel's Recording Toggle card so the two
+/// stay in sync. Tapping the pill toggles recording on/off — same
+/// action as the panel's Recording Toggle card, so pilots who don't
+/// have the panel card placed (or whose panel is currently
+/// scrolled/covered) still have a one-tap manual override.
+struct RecordingStatusPill: View {
+    @ObservedObject var recorder: FlightRecorder
+    /// Disables the toggle (and dims the pill) while the simulator
+    /// is running. Sim data is synthetic; we deliberately don't let
+    /// it stream into an IGC file — a sim "flight" uploaded to
+    /// XContest / Leonardo would be misleading.
+    @ObservedObject var simulator: FlightSimulator
+    /// 0…1 phase used to pulse the red dot while recording.
+    @State private var pulse: Double = 0
+    private let pulseTimer = Timer.publish(every: 0.05, on: .main, in: .common).autoconnect()
+
+    var body: some View {
+        Button {
+            if recorder.isRecording {
+                _ = recorder.stopFlight()
+            } else {
+                recorder.startFlight()
+            }
+        } label: {
+            HStack(spacing: 5) {
+                // Icon: filled & pulsing while recording, hollow & static
+                // when idle. We draw the dot manually (rather than using
+                // SF Symbols) so the pulse animation is identical to the
+                // panel's Recording Toggle card.
+                ZStack {
+                    if recorder.isRecording {
+                        Circle()
+                            .fill(Color.white)
+                            .frame(width: 9, height: 9)
+                            .scaleEffect(1.0 + 0.20 * pulse)
+                            .opacity(0.75 + 0.25 * pulse)
+                    } else {
+                        Circle()
+                            .stroke(Color.white.opacity(0.55), lineWidth: 1.4)
+                            .frame(width: 9, height: 9)
+                    }
+                }
+                .frame(width: 11, height: 11)
+
+                Text("REC")
+                    .font(.system(size: 12, weight: .heavy, design: .rounded))
+                    .tracking(0.5)
+                    .lineLimit(1)
+                    .fixedSize()
+            }
+            .foregroundColor(recorder.isRecording
+                             ? .white
+                             : .white.opacity(0.45))
+            .padding(.horizontal, 8).padding(.vertical, 4)
+            .background(
+                Capsule()
+                    .fill(recorder.isRecording
+                          ? Color(red: 0.85, green: 0.15, blue: 0.15)
+                          : Color.black.opacity(0.55))
+            )
+            // Sim-active dim: ghost the whole pill so the pilot sees
+            // the control is unavailable in this mode. Active red
+            // recordings are already exclusive with sim mode (the
+            // simulator-lifecycle hook in FlightRecorder stops a
+            // real recording the moment a sim is started), so we
+            // never end up dimming a live red pill.
+            .opacity(simulator.isRunning ? 0.35 : 1.0)
+        }
+        .buttonStyle(.plain)
+        .disabled(simulator.isRunning)
+        .onReceive(pulseTimer) { _ in
+            // Sine in 0…1 with ~1.2 s period — same cadence as the
+            // panel toggle card so the two indicators visibly beat
+            // in unison.
+            let t = Date().timeIntervalSinceReferenceDate
+            pulse = (sin(t * 2 * .pi / 1.2) + 1) / 2
+        }
     }
 }

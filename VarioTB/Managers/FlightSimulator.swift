@@ -31,6 +31,14 @@ final class FlightSimulator: ObservableObject {
     @Published var isRunning: Bool = false
     @Published var currentPhaseLabel: String = ""
 
+    /// Real wall-clock instant captured the moment `start()` was called.
+    /// Combined with `Self.timeScale`, this lets the clock card show the
+    /// simulated competition time: starting at `taskStartTime` when the
+    /// sim begins, and advancing `timeScale` simulated-seconds per real
+    /// second so the whole task window plays out at the same compressed
+    /// rate as the flight itself. `nil` while the simulator is idle.
+    @Published var simStartedAtRealDate: Date? = nil
+
     // Launch site: Kumludoruk, Ayaş (from the real IGC)
     static let launchLat: Double = 40.031450
     static let launchLon: Double = 32.328050
@@ -56,11 +64,27 @@ final class FlightSimulator: ObservableObject {
     // timeScale 18× compresses the whole triangle into ~120 seconds real time.
     static let timeScale: Double = 18.0
 
+    // Advanced-XC-pilot flight model:
+    //   • Average ground speed in cruise ≈ 30 km/h = 8.333 m/s.
+    //   • Sustained glide ratio (L/D) = 10:1, so the corresponding
+    //     steady sink rate is groundSpeed / glideRatio
+    //     = 8.333 / 10 ≈ 0.833 m/s of descent per second.
+    // These two numbers drive every gliding phase of the simulator —
+    // launch, task legs, the legacy scripted triangle legs, and the
+    // final landing approach. Thermal climb phases override
+    // horizontalSpeedMs to a slower circling value and use a positive
+    // verticalSpeedMs taken from the thermal profile, so they don't
+    // use these constants.
+    static let xcCruiseGroundSpeedMs: Double = 30.0 / 3.6   // 8.333…
+    static let xcGlideRatio: Double = 10.0
+    static let xcCruiseSinkMs: Double =
+        xcCruiseGroundSpeedMs / xcGlideRatio                // 0.833…
+
     private var lat: Double = launchLat
     private var lon: Double = launchLon
     private var altM: Double = launchAltM
     private var verticalSpeedMs: Double = 0
-    private var horizontalSpeedMs: Double = 10
+    private var horizontalSpeedMs: Double = xcCruiseGroundSpeedMs
     private var headingDeg: Double = 0
 
     // Ayaş prevailing wind
@@ -273,6 +297,19 @@ final class FlightSimulator: ObservableObject {
         setupScenario()
         locationMgr?.simulatedMode = true
         isRunning = true
+        // Anchor real-time at sim-start. The simulated clock begins at
+        // exactly `taskStartTime` and advances `timeScale`× faster than
+        // real-time from there. SSS-cross happens whenever the pilot
+        // arrives at the SSS gate — its clock value is whatever the
+        // simulated time happens to be at that point (e.g. taskStart
+        // + a few simulated minutes for the lead-in).
+        //
+        // Earlier versions tried to back-shift the anchor so SSS-cross
+        // landed exactly on `taskStart + 1 s`, but that confused users
+        // who saw the clock start in the past (e.g. 12:51 instead of
+        // 13:00). Simpler is better: the clock reads the task start
+        // time at sim-start, full stop.
+        simStartedAtRealDate = Date()
         // Inject initial launch fix BEFORE the timer fires, so the
         // FAI detector's flightStart captures the true launch coordinate.
         locationMgr?.injectSimulatedData(
@@ -305,6 +342,9 @@ final class FlightSimulator: ObservableObject {
         simTimer?.invalidate()
         simTimer = nil
         currentPhaseLabel = ""
+        // Drop the simulated-time anchor — the clock card observes this
+        // and switches back to real `Date()` once it goes nil.
+        simStartedAtRealDate = nil
 
         let vm = varioMgr
         let lm = locationMgr
@@ -318,6 +358,37 @@ final class FlightSimulator: ObservableObject {
             vm?.resetLive()
             we?.reset()
         }
+    }
+
+    /// Wall-clock value to display while the simulator is running.
+    ///
+    /// Returns the wall-clock the simulated competition clock should
+    /// display. Two phases:
+    ///
+    ///   • **Before SSS is reached** (`sssReachedAt == nil`): returns
+    ///     `nil` so the caller (ClockCard) falls back to the real
+    ///     `Date()`. The pilot is in lead-in flight; no race time has
+    ///     started yet, so the clock shows the actual time of day.
+    ///   • **After SSS is reached** (`sssReachedAt != nil`): returns
+    ///     `taskStartTime + (Date() - sssReachedAt) × timeScale`. The
+    ///     clock snaps to `taskStartTime` at the moment SSS was crossed,
+    ///     then ticks forward at `timeScale` × real-time so the rest
+    ///     of the race plays out compressed.
+    ///
+    /// Returns `nil` when:
+    ///   - the simulator is not running, or
+    ///   - the task has no `taskStartTime`, or
+    ///   - SSS hasn't been crossed yet (`sssReachedAt == nil`).
+    ///
+    /// In all `nil` cases the caller renders real wall-clock time.
+    func simulatedClockDate(taskStartTime: Date?,
+                             sssReachedAt: Date?) -> Date? {
+        guard isRunning,
+              let start = taskStartTime,
+              let sssTime = sssReachedAt else { return nil }
+        let elapsedReal = Date().timeIntervalSince(sssTime)
+        let elapsedSim = elapsedReal * Self.timeScale
+        return start.addingTimeInterval(elapsedSim)
     }
 
     // MARK: - Scenario setup
@@ -370,17 +441,19 @@ final class FlightSimulator: ObservableObject {
 
         switch phase {
         case .launch:
-            verticalSpeedMs = -0.6
-            horizontalSpeedMs = 10
+            // Just-after-takeoff straight glide: same XC cruise model.
+            verticalSpeedMs = -Self.xcCruiseSinkMs
+            horizontalSpeedMs = Self.xcCruiseGroundSpeedMs
             headingDeg = bearingTo(lat: Self.tp1Lat, lon: Self.tp1Lon)
             if t >= 2.0 {
                 enterPhase(.legToTP1)
             }
 
         case .legToTP1:
-            // Long glide SW to TP1 (~4.8 km)
-            verticalSpeedMs = -0.8
-            horizontalSpeedMs = 10
+            // Long glide SW to TP1 (~4.8 km) at advanced-XC pace:
+            // 30 km/h ground speed, 10:1 glide ratio.
+            verticalSpeedMs = -Self.xcCruiseSinkMs
+            horizontalSpeedMs = Self.xcCruiseGroundSpeedMs
             headingDeg = bearingTo(lat: Self.tp1Lat, lon: Self.tp1Lon)
             let d = distanceM(fromLat: lat, fromLon: lon,
                               toLat: Self.tp1Lat, toLon: Self.tp1Lon)
@@ -404,9 +477,9 @@ final class FlightSimulator: ObservableObject {
             }
 
         case .legToTP2:
-            // Glide WNW to TP2 (~8.3 km, longest leg)
-            verticalSpeedMs = -0.9
-            horizontalSpeedMs = 10
+            // Glide WNW to TP2 (~8.3 km, longest leg) — advanced XC pace.
+            verticalSpeedMs = -Self.xcCruiseSinkMs
+            horizontalSpeedMs = Self.xcCruiseGroundSpeedMs
             headingDeg = bearingTo(lat: Self.tp2Lat, lon: Self.tp2Lon)
             let d = distanceM(fromLat: lat, fromLon: lon,
                               toLat: Self.tp2Lat, toLon: Self.tp2Lon)
@@ -428,9 +501,9 @@ final class FlightSimulator: ObservableObject {
             }
 
         case .legToTP3:
-            // Glide ESE to TP3 (~5.4 km)
-            verticalSpeedMs = -0.9
-            horizontalSpeedMs = 10
+            // Glide ESE to TP3 (~5.4 km) — advanced XC pace.
+            verticalSpeedMs = -Self.xcCruiseSinkMs
+            horizontalSpeedMs = Self.xcCruiseGroundSpeedMs
             headingDeg = bearingTo(lat: Self.tp3Lat, lon: Self.tp3Lon)
             let d = distanceM(fromLat: lat, fromLon: lon,
                               toLat: Self.tp3Lat, toLon: Self.tp3Lon)
@@ -441,9 +514,10 @@ final class FlightSimulator: ObservableObject {
             }
 
         case .legBack:
-            // Very short final glide back to launch (~0.6 km)
-            verticalSpeedMs = -0.5
-            horizontalSpeedMs = 10
+            // Very short final glide back to launch (~0.6 km) —
+            // same XC cruise model.
+            verticalSpeedMs = -Self.xcCruiseSinkMs
+            horizontalSpeedMs = Self.xcCruiseGroundSpeedMs
             headingDeg = bearingTo(lat: Self.launchLat, lon: Self.launchLon)
             let d = distanceM(fromLat: lat, fromLon: lon,
                               toLat: Self.launchLat, toLon: Self.launchLon)
@@ -490,8 +564,10 @@ final class FlightSimulator: ObservableObject {
             }
 
             let target = simPathPoints[simPathIdx]
-            horizontalSpeedMs = 10
-            verticalSpeedMs = -0.3   // steady sink while gliding
+            // Advanced-XC pilot model: 30 km/h ground speed, 10:1 glide
+            // → ~0.83 m/s sink while gliding between turnpoints.
+            horizontalSpeedMs = Self.xcCruiseGroundSpeedMs
+            verticalSpeedMs = -Self.xcCruiseSinkMs
 
             let d = distanceM(fromLat: lat, fromLon: lon,
                               toLat: target.latitude,
@@ -528,9 +604,12 @@ final class FlightSimulator: ObservableObject {
             }
 
         case .taskDone:
-            // Land gently — level flight for 2s then stop.
-            verticalSpeedMs = -0.4
-            horizontalSpeedMs = 6
+            // Gentle landing approach — pilot bleeds off speed and
+            // accepts slightly more sink than cruise. ~70% of cruise
+            // speed (~6 m/s) feels right for a final glide; sink stays
+            // bounded so the landing is still controlled.
+            verticalSpeedMs = -Self.xcCruiseSinkMs * 0.5
+            horizontalSpeedMs = Self.xcCruiseGroundSpeedMs * 0.7
             if t >= 2.0 {
                 stop()
             }

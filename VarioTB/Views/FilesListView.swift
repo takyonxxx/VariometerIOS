@@ -47,10 +47,26 @@ struct FilesListView: View {
 
                     Section(header: Text(L10n.string("files"))) {
                         ForEach(files, id: \.self) { url in
-                            FileRow(url: url,
-                                    onShare: {
-                                        shareItems = ShareItems(urls: [url])
-                                    })
+                            // IGC files are tappable — push the detail
+                            // screen with parsed flight summary. CUP
+                            // (waypoint) files have no per-flight
+                            // metrics to show, so they stay as plain
+                            // rows with just the share affordance.
+                            if url.pathExtension.lowercased() == "igc" {
+                                NavigationLink {
+                                    FlightDetailView(url: url)
+                                } label: {
+                                    FileRow(url: url,
+                                            onShare: {
+                                                shareItems = ShareItems(urls: [url])
+                                            })
+                                }
+                            } else {
+                                FileRow(url: url,
+                                        onShare: {
+                                            shareItems = ShareItems(urls: [url])
+                                        })
+                            }
                         }
                         .onDelete { indexSet in
                             for i in indexSet {

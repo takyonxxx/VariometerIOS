@@ -36,6 +36,18 @@ struct ContentView: View {
     /// cards snap back as you try to move them.
     @State private var panelEditMode: Bool = false
 
+    // MARK: - Auto-start flight detection state
+    //
+    // Flymaster-style single-signal detection: ground speed must stay
+    // above the user's threshold (default 5 km/h) continuously for
+    // the configured duration (default 3 s) before recording starts.
+    // Walking pace (4-5 km/h with frequent pauses) doesn't satisfy the
+    // sustained condition; a foot launch (steady acceleration past 5
+    // km/h) does, instantly.
+    /// Wall-clock timestamp at which the speed-based airborne signal
+    /// first went TRUE. Reset to nil whenever the signal goes FALSE.
+    @State private var fastSpeedSince: Date? = nil
+
     /// Deep-link task payload drained from DeepLink.pendingPayload or
     /// the taskImportNotification. When non-nil, ContentView opens the
     /// task editor with this payload queued for import. Cleared once
@@ -104,6 +116,8 @@ struct ContentView: View {
                                       wind: wind,
                                       fai: fai,
                                       task: task,
+                                      simulator: simulator,
+                                      recorder: recorder,
                                       fitTriangleToken: fitTriangleToken,
                                       fitTaskToken: fitTaskToken,
                                       autoFollow: $autoFollow,
@@ -144,7 +158,8 @@ struct ContentView: View {
             recorder.attach(locationManager: locationMgr,
                             varioManager: vario,
                             simulator: simulator,
-                            settings: settings)
+                            settings: settings,
+                            task: task)
             liveTracker.attach(settings: settings, locationManager: locationMgr)
             fai.attach(locationManager: locationMgr)
             if settings.liveTrackEnabled { liveTracker.start() }
@@ -347,15 +362,39 @@ struct ContentView: View {
                 task.updateTaskPhase()
             }
 
-            // Auto-start real flight recording when:
-            //   - simulator is NOT running
-            //   - we have a GPS fix
-            //   - the user is moving (>5 km/h) or climbing (>1 m/s)
+            // Auto-start real flight recording when ground speed is
+            // sustained above the user's threshold (default 5 km/h
+            // for 3 s — Flymaster's "Start Speed" approach). Slow
+            // enough to catch a foot-launch on the first strides,
+            // fast enough that walking around the launch with the
+            // wing on your back won't trip it. The threshold
+            // resetting to nil whenever speed drops below the bar
+            // filters single GPS speed glitches — it has to STAY
+            // above the bar continuously.
+            //
+            // The pilot can always hand-start / hand-stop via the
+            // panel's Recording Toggle card.
             if !simulator.isRunning,
                !recorder.isRecording,
-               locationMgr.hasFix,
-               (locationMgr.groundSpeedKmh > 5 || vario.filteredVario > 1) {
-                recorder.startFlight()
+               locationMgr.hasFix {
+                let now = Date()
+
+                if locationMgr.groundSpeedKmh > settings.autoStartSpeedKmh {
+                    if fastSpeedSince == nil { fastSpeedSince = now }
+                } else {
+                    fastSpeedSince = nil
+                }
+
+                let speedTriggered = (fastSpeedSince.map {
+                    now.timeIntervalSince($0) >= settings.autoStartSpeedSeconds
+                } ?? false)
+
+                if speedTriggered {
+                    recorder.startFlight()
+                    fastSpeedSince = nil
+                }
+            } else if recorder.isRecording {
+                fastSpeedSince = nil
             }
         }
     }
