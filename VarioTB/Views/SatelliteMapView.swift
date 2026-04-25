@@ -595,6 +595,10 @@ struct SatelliteMapView: UIViewRepresentable {
                 view.annotation = annotation
                 view.image = Self.thermalImage(strength: t.thermal.strength)
                 view.canShowCallout = true
+                // Image is 20×20 with the colored circle inset symmetrically,
+                // so image-center == circle-center == thermal coordinate.
+                // Reset any offset in case a recycled view carried one over.
+                view.centerOffset = .zero
                 return view
             }
             if let tp = annotation as? TurnpointAnnotation {
@@ -604,7 +608,12 @@ struct SatelliteMapView: UIViewRepresentable {
                 view.annotation = annotation
                 view.image = Self.turnpointImage(type: tp.turnpoint.type, index: tp.index)
                 view.canShowCallout = true
-                view.centerOffset = CGPoint(x: 0, y: -14)
+                // The turnpoint image is fully symmetric (24×24 disc with
+                // image-center == disc-center), so .zero offset puts the
+                // disc center exactly on the cylinder's center coordinate.
+                // Reset explicitly in case a recycled view carried over an
+                // offset from a previous configuration.
+                view.centerOffset = .zero
                 return view
             }
             return nil
@@ -701,12 +710,17 @@ struct SatelliteMapView: UIViewRepresentable {
         }()
 
         static func thermalImage(strength: Double) -> UIImage {
-            // Blue gradient scale — strong cyan to deep indigo
+            // Red gradient scale — strong red for powerful thermals,
+            // softer red/orange for weaker ones. Kept fully symmetric:
+            // a 14-pt circle inset by 3 pt inside a 20×20 image so the
+            // circle center is the image center, which means the dot
+            // lands exactly on the thermal coordinate (no centerOffset
+            // is applied to ThermalAnnotation views).
             let color: UIColor
-            if strength >= 3.0 { color = UIColor(red: 0.40, green: 0.90, blue: 1.00, alpha: 1) }
-            else if strength >= 2.0 { color = UIColor(red: 0.45, green: 0.70, blue: 1.00, alpha: 1) }
-            else if strength >= 1.0 { color = UIColor(red: 0.55, green: 0.60, blue: 0.95, alpha: 1) }
-            else { color = UIColor(red: 0.60, green: 0.65, blue: 0.85, alpha: 1) }
+            if strength >= 3.0 { color = UIColor(red: 1.00, green: 0.20, blue: 0.20, alpha: 1) }
+            else if strength >= 2.0 { color = UIColor(red: 1.00, green: 0.30, blue: 0.30, alpha: 1) }
+            else if strength >= 1.0 { color = UIColor(red: 0.95, green: 0.40, blue: 0.40, alpha: 1) }
+            else { color = UIColor(red: 0.85, green: 0.45, blue: 0.45, alpha: 1) }
             let size = CGSize(width: 20, height: 20)
             return UIGraphicsImageRenderer(size: size).image { ctx in
                 let c = ctx.cgContext
@@ -718,8 +732,23 @@ struct SatelliteMapView: UIViewRepresentable {
             }
         }
 
-        /// Turnpoint pin: color-coded flag with index number.
-        /// Green = takeoff, cyan = SSS, blue = turn, orange = ESS, red = goal.
+        /// Turnpoint marker: a small symmetric color-coded disc with
+        /// the index number inside.
+        ///
+        /// Drawn fully symmetric so the image's geometric center IS the
+        /// disc's center. Combined with `centerOffset = .zero` on the
+        /// annotation view, this places the disc center exactly on the
+        /// turnpoint coordinate — i.e. exactly on the cylinder center —
+        /// for every turnpoint type. There is no flag pole and no
+        /// asymmetric ornament; any extra decoration would shift the
+        /// geometric center and break the alignment.
+        ///
+        /// Color-coded by type:
+        ///   takeoff = green, SSS = cyan, turn = blue,
+        ///   ESS = orange, goal = red.
+        ///
+        /// Layout: 24×24 canvas, disc bounds (2, 2, 20, 20) → disc
+        /// center (12, 12) == image center (12, 12).
         static func turnpointImage(type: TurnpointType, index: Int) -> UIImage {
             let color: UIColor
             switch type {
@@ -729,25 +758,26 @@ struct SatelliteMapView: UIViewRepresentable {
             case .ess:     color = UIColor(red: 1.00, green: 0.65, blue: 0.30, alpha: 1)
             case .goal:    color = UIColor(red: 1.00, green: 0.35, blue: 0.35, alpha: 1)
             }
-            let size = CGSize(width: 34, height: 38)
+            let size = CGSize(width: 24, height: 24)
             return UIGraphicsImageRenderer(size: size).image { ctx in
                 let c = ctx.cgContext
-                // Flag pole
-                c.setFillColor(UIColor.white.cgColor)
-                c.fill(CGRect(x: 4, y: 8, width: 2, height: 28))
-                // Flag body with index number
-                c.setFillColor(UIColor.black.withAlphaComponent(0.4).cgColor)
-                c.fillEllipse(in: CGRect(x: 6, y: 4, width: 26, height: 22))
+                let discRect = CGRect(x: 2, y: 2, width: 20, height: 20)
+                // Filled colored disc.
                 c.setFillColor(color.cgColor)
-                c.fillEllipse(in: CGRect(x: 8, y: 6, width: 22, height: 18))
-                // Number
+                c.fillEllipse(in: discRect)
+                // White outline for contrast over satellite imagery.
+                c.setStrokeColor(UIColor.white.cgColor)
+                c.setLineWidth(2)
+                c.strokeEllipse(in: discRect)
+                // Index number, centered on the disc at (12, 12).
                 let attrs: [NSAttributedString.Key: Any] = [
-                    .font: UIFont.systemFont(ofSize: 11, weight: .heavy),
+                    .font: UIFont.systemFont(ofSize: 12, weight: .heavy),
                     .foregroundColor: UIColor.white,
                 ]
                 let str = NSAttributedString(string: "\(index)", attributes: attrs)
-                let size = str.size()
-                str.draw(at: CGPoint(x: 19 - size.width/2, y: 14 - size.height/2))
+                let strSize = str.size()
+                str.draw(at: CGPoint(x: 12 - strSize.width/2,
+                                     y: 12 - strSize.height/2))
             }
         }
     }

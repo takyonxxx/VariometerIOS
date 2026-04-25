@@ -21,6 +21,14 @@ final class VarioManager: ObservableObject {
     private var climbStreakCount: Int = 0
     private var climbStreakCoord: CLLocationCoordinate2D?
     private var climbStreakAlt: Double = 0
+    // Vario-weighted coordinate accumulators for thermal core estimation.
+    // The core of a thermal is approximated as the centroid of all
+    // (lat, lon) samples weighted by climb rate: stronger lift means
+    // the pilot is closer to the core, so those points pull the
+    // marker toward the true center instead of just the entry point.
+    private var climbWeightedLatSum: Double = 0
+    private var climbWeightedLonSum: Double = 0
+    private var climbWeightTotal: Double = 0
 
     init(settings: AppSettings) {
         self.settings = settings
@@ -98,16 +106,40 @@ final class VarioManager: ObservableObject {
                 climbStreakCount = 0
                 climbStreakCoord = coordinate
                 climbStreakAlt = altitude
+                climbWeightedLatSum = 0
+                climbWeightedLonSum = 0
+                climbWeightTotal = 0
             }
             climbStreakSum += filteredVario
             climbStreakCount += 1
+            // Vario-weighted centroid: each location sample contributes
+            // proportionally to its climb rate. A linear weight on
+            // filteredVario already discounts weak lift on the edges
+            // and emphasises the core where vario peaks.
+            if let c = coordinate {
+                let w = max(0, filteredVario)
+                climbWeightedLatSum += c.latitude * w
+                climbWeightedLonSum += c.longitude * w
+                climbWeightTotal += w
+            }
         } else {
             if let start = climbStreakStart,
                Date().timeIntervalSince(start) >= 6.0,
                climbStreakCount > 0,
-               let coord = climbStreakCoord {
+               let entryCoord = climbStreakCoord {
                 let avg = climbStreakSum / Double(climbStreakCount)
-                let t = ThermalPoint(coordinate: coord,
+                // Use weighted centroid when we accumulated enough lift,
+                // otherwise fall back to the entry coordinate (avoids
+                // divide-by-near-zero on marginal climbs).
+                let coreCoord: CLLocationCoordinate2D
+                if climbWeightTotal > 0.001 {
+                    coreCoord = CLLocationCoordinate2D(
+                        latitude: climbWeightedLatSum / climbWeightTotal,
+                        longitude: climbWeightedLonSum / climbWeightTotal)
+                } else {
+                    coreCoord = entryCoord
+                }
+                let t = ThermalPoint(coordinate: coreCoord,
                                      altitude: climbStreakAlt,
                                      strength: avg,
                                      timestamp: start)
@@ -121,6 +153,9 @@ final class VarioManager: ObservableObject {
             climbStreakStart = nil
             climbStreakSum = 0
             climbStreakCount = 0
+            climbWeightedLatSum = 0
+            climbWeightedLonSum = 0
+            climbWeightTotal = 0
         }
     }
 
@@ -143,6 +178,9 @@ final class VarioManager: ObservableObject {
         climbStreakStart = nil
         climbStreakSum = 0
         climbStreakCount = 0
+        climbWeightedLatSum = 0
+        climbWeightedLonSum = 0
+        climbWeightTotal = 0
     }
 }
 
