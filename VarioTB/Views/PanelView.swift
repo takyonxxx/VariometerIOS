@@ -909,12 +909,68 @@ private struct CourseCard: View {
     /// observing task.lastReachEvent.
     @State private var isFlashing: Bool = false
 
-    private var arrowRotation: Angle {
+    /// Continuously-unwrapped rotation in degrees. We can't pass the
+    /// raw "target" rotation directly to .rotationEffect() because
+    /// SwiftUI interpolates Angle values numerically — going from
+    /// 350° to 10° would animate as -340° (long way around) rather
+    /// than the correct +20° (short way). To prevent the arrow from
+    /// spinning a full turn at the 0/360 wrap point, we keep this
+    /// value as an unbounded running tally: each time the target
+    /// changes, we add the *shortest* signed delta to it. The arrow
+    /// then animates between two close numbers and the rotation is
+    /// always the visually shortest arc.
+    @State private var displayedRotationDeg: Double = 0
+
+    /// Target rotation in degrees, computed from current inputs:
+    ///   - With an active task: heading-up display. Bearing to next
+    ///     turnpoint *relative to* the pilot's current heading, so
+    ///     when the pilot is flying straight at the TP the arrow is
+    ///     pinned at the top of the card.
+    ///   - Without a task: north-up display. The arrow simply mirrors
+    ///     the pilot's GPS course (0=N, 90=E …), matching what the
+    ///     TrueHeading card shows.
+    private var targetRotationDeg: Double {
         if isTaskActive, let p = pilotCoord,
            let bearing = task.bearingToNextTurnpoint(from: p) {
-            return .degrees(bearing - courseDeg)
+            return bearing - courseDeg
         }
-        return .degrees(-courseDeg)
+        return courseDeg
+    }
+
+    /// Numeric heading readout for the bottom-right corner. With a task
+    /// active this is the *relative* bearing to the next turnpoint with
+    /// an R/L suffix ("60°R" = turn 60° right). Without a task this is
+    /// the pilot's absolute GPS course (matches the TrueHeading card).
+    /// At-zero readings get no suffix — pilot is already on track.
+    private var headingReadout: String {
+        if isTaskActive, let p = pilotCoord,
+           let bearing = task.bearingToNextTurnpoint(from: p) {
+            // Wrap relative angle to (-180, +180].
+            var rel = (bearing - courseDeg).truncatingRemainder(dividingBy: 360)
+            if rel > 180  { rel -= 360 }
+            if rel <= -180 { rel += 360 }
+            let mag = Int(abs(rel).rounded())
+            if mag == 0 { return "0°" }
+            return "\(mag)°\(rel > 0 ? "R" : "L")"
+        }
+        // North-up: mutlak course
+        var c = courseDeg.truncatingRemainder(dividingBy: 360)
+        if c < 0 { c += 360 }
+        return "\(Int(c.rounded()))°"
+    }
+
+    /// Short label for the next turnpoint badge (top-left). Uses the TP
+    /// name if it's compact (≤6 chars), otherwise falls back to T1/T2/…
+    /// indexed from the start of the task. nil when no task is active or
+    /// no unreached TP exists.
+    private var nextTPLabel: String? {
+        guard isTaskActive, let p = pilotCoord,
+              let next = task.nextTurnpoint(pilot: p),
+              let idx = task.turnpoints.firstIndex(where: { $0.id == next.id })
+        else { return nil }
+        let name = next.name.trimmingCharacters(in: .whitespaces)
+        if !name.isEmpty && name.count <= 6 { return name }
+        return "T\(idx + 1)"
     }
 
     /// Gradient used to fill the arrow. Normally orange→red; during the
@@ -928,15 +984,28 @@ private struct CourseCard: View {
 
     var body: some View {
         GeometryReader { geo in
-            // Arrow sizing. The arrow is a solid shape that occupies
-            // its full frame — tip at top center (y=0), base corners
-            // at bottom corners. When rotated 180° the tip swings to
-            // the bottom edge of the frame. If we make the frame
-            // exactly as wide/tall as the card, the rotated tip kisses
-            // the card's rounded-rect border. Multiply by 0.60 to
-            // leave a clear margin on all sides — enough that the
-            // arrow never touches the frame at any rotation angle.
-            let arrowSize = min(geo.size.width, geo.size.height) * 0.60
+            // Arrow sizing. The arrow shape extends to its frame's
+            // bottom corners, so at 45° rotations the corners reach
+            // toward the diagonal of the card. Multiplier 0.65 keeps
+            // the arrow visually large while leaving enough clearance
+            // that the rotated corners don't overlap the numeric
+            // readout, N marker, or TP badge sitting in the corners.
+            // The overlays are still drawn ON TOP of the arrow in the
+            // ZStack as a safety net, but the geometry alone keeps
+            // them visually separated at every angle.
+            let dim = min(geo.size.width, geo.size.height)
+            let arrowSize = dim * 0.65
+            // Font sizes are driven by card HEIGHT, not by min(w,h).
+            // Course/heading cards on the panel are usually wide and
+            // short (~180×80) — width is plentiful, height is the
+            // scarce axis. Tying type to height keeps the labels
+            // legible on wide-short layouts where a min(w,h) formula
+            // would clamp them down to the height-derived value
+            // anyway, then floor at the lower min cap.
+            let h = geo.size.height
+            let degSize = max(11.0, min(18.0, h * 0.18))
+            let nSize   = max(10.0, min(14.0, h * 0.14))
+            let tpSize  = max(11.0, min(16.0, h * 0.16))
 
             ZStack {
                 RoundedRectangle(cornerRadius: 10)
@@ -953,9 +1022,57 @@ private struct CourseCard: View {
                     )
                     .frame(width: arrowSize, height: arrowSize)
                     .scaleEffect(isFlashing ? 1.15 : 1.0)
-                    .rotationEffect(arrowRotation)
-                    .animation(.easeOut(duration: 0.25), value: arrowRotation)
+                    .rotationEffect(.degrees(displayedRotationDeg))
+                    .animation(.easeOut(duration: 0.25), value: displayedRotationDeg)
                     .animation(.spring(response: 0.3, dampingFraction: 0.55), value: isFlashing)
+
+                // North marker — only shown when no task is loaded
+                // (north-up mode). With a task the card is heading-up,
+                // where a fixed N would be misleading.
+                if !isTaskActive {
+                    VStack(spacing: 1) {
+                        Text("N")
+                            .font(.system(size: nSize, weight: .heavy, design: .rounded))
+                            .foregroundColor(Color(red: 0.45, green: 0.85, blue: 1.0))
+                        Rectangle()
+                            .fill(Color(red: 0.45, green: 0.85, blue: 1.0).opacity(0.7))
+                            .frame(width: 1.5, height: nSize * 0.45)
+                    }
+                    .padding(.top, 3)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                }
+
+                // Next-turnpoint badge — only shown when a task is loaded
+                // and an unreached TP exists. Top-left corner.
+                if let tpLabel = nextTPLabel {
+                    HStack(spacing: 3) {
+                        Image(systemName: "flag.fill")
+                            .font(.system(size: tpSize * 0.85, weight: .bold))
+                        Text(tpLabel)
+                            .font(.system(size: tpSize, weight: .heavy, design: .rounded))
+                    }
+                    .foregroundColor(Color(red: 1.0, green: 0.70, blue: 0.28))
+                    .padding(.leading, 6)
+                    .padding(.top, 4)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                }
+
+                // Numeric heading readout — bottom-right corner.
+                Text(headingReadout)
+                    .font(.system(size: degSize, weight: .bold, design: .rounded))
+                    .foregroundColor(.white)
+                    .monospacedDigit()
+                    .padding(.trailing, 8)
+                    .padding(.bottom, 6)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+            }
+            .onAppear {
+                // Initialise so the first frame doesn't animate from 0.
+                displayedRotationDeg = targetRotationDeg
+            }
+            .onChange(of: targetRotationDeg) { newTarget in
+                displayedRotationDeg = AngleUnwrap.next(
+                    current: displayedRotationDeg, target: newTarget)
             }
             .onChange(of: task.lastReachEvent) { _ in
                 // Fire the flash. We don't care which TP was reached —
@@ -976,20 +1093,37 @@ private struct CourseCard: View {
     }
 }
 
-/// Raw true heading card — always shows the pilot's physical GPS course,
-/// never the task navigation target. Intended as a secondary card that
-/// pilots can add alongside Rota when they want both numbers.
+/// Raw true heading card — north-up display. The card frame is fixed
+/// with north at the top, and the arrow rotates to show the pilot's
+/// physical GPS course. At courseDeg=0 the arrow points up (heading
+/// north); at courseDeg=90 it points right (heading east); etc. The
+/// numeric readout shows the same value in degrees.
+///
+/// When no task is loaded this card shows the same direction as the
+/// CourseCard (which also falls back to the pilot's heading). The
+/// difference is that CourseCard switches to "bearing to next TP"
+/// when a task is active; TrueHeadingCard always stays raw, so pilots
+/// who want to see both numbers (raw heading AND task target) can
+/// place the two cards side by side.
 private struct TrueHeadingCard: View {
     let courseDeg: Double
 
+    /// Continuously-unwrapped rotation in degrees. See CourseCard's
+    /// `displayedRotationDeg` for why we need this — without it the
+    /// arrow spins a full turn whenever courseDeg crosses 0/360.
+    @State private var displayedRotationDeg: Double = 0
+
     var body: some View {
         GeometryReader { geo in
-            let scale = min(geo.size.width / 120.0, geo.size.height / 110.0)
-            let degSize = max(9.0, min(16.0, 10.0 * scale))
-            // Leave consistent margin so the rotated arrow tip never
-            // touches the card's rounded-rect border (see CourseCard
-            // for the geometry explanation).
-            let arrowSize = min(geo.size.width, geo.size.height) * 0.60
+            // Match CourseCard's sizing system: type scales with card
+            // height (the scarce axis on wide-short panel layouts),
+            // and the arrow uses the same 0.65 multiplier so the two
+            // cards look like a matched pair when placed side by side.
+            let dim = min(geo.size.width, geo.size.height)
+            let arrowSize = dim * 0.65
+            let h = geo.size.height
+            let degSize = max(11.0, min(18.0, h * 0.18))
+            let nSize   = max(10.0, min(14.0, h * 0.14))
 
             ZStack(alignment: .bottomTrailing) {
                 RoundedRectangle(cornerRadius: 10)
@@ -1002,9 +1136,25 @@ private struct TrueHeadingCard: View {
                             startPoint: .top, endPoint: .bottom)
                     )
                     .frame(width: arrowSize, height: arrowSize)
-                    .rotationEffect(.degrees(courseDeg))
-                    .animation(.easeOut(duration: 0.25), value: courseDeg)
+                    .rotationEffect(.degrees(displayedRotationDeg))
+                    .animation(.easeOut(duration: 0.25), value: displayedRotationDeg)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                // North marker — fixed at the top center of the card,
+                // never rotates. Reminds the pilot at a glance that
+                // this is a north-up display: the top of the card is
+                // always true north, and the arrow's rotation directly
+                // reads as the pilot's GPS course.
+                VStack(spacing: 1) {
+                    Text("N")
+                        .font(.system(size: nSize, weight: .heavy, design: .rounded))
+                        .foregroundColor(Color(red: 0.45, green: 0.85, blue: 1.0))
+                    Rectangle()
+                        .fill(Color(red: 0.45, green: 0.85, blue: 1.0).opacity(0.7))
+                        .frame(width: 1.5, height: nSize * 0.45)
+                }
+                .padding(.top, 3)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
 
                 Text(String(format: "%.0f°", courseDeg))
                     .font(.system(size: degSize, weight: .bold, design: .rounded))
@@ -1013,7 +1163,35 @@ private struct TrueHeadingCard: View {
                     .padding(.trailing, 8)
                     .padding(.bottom, 6)
             }
+            .onAppear {
+                displayedRotationDeg = courseDeg
+            }
+            .onChange(of: courseDeg) { newTarget in
+                displayedRotationDeg = AngleUnwrap.next(
+                    current: displayedRotationDeg, target: newTarget)
+            }
         }
+    }
+}
+
+/// Helpers for animating angles without "long way around" jumps at the
+/// 0/360 wrap boundary. Used by every card whose arrow tracks a compass
+/// bearing or heading.
+enum AngleUnwrap {
+    /// Returns the new running rotation (in degrees) such that the
+    /// signed delta from `current` is the *shortest* arc to `target`,
+    /// wrapping around at 360°. The output is unbounded — successive
+    /// turns past 360° accumulate without reset, which is exactly what
+    /// SwiftUI's numeric Angle interpolation wants.
+    ///
+    /// Example: current = 350, target = 10 → returns 370
+    /// (so the arrow animates 350→370 = +20°, the short way).
+    static func next(current: Double, target: Double) -> Double {
+        // Difference between target and current, wrapped into (-180, +180].
+        var delta = (target - current).truncatingRemainder(dividingBy: 360)
+        if delta > 180  { delta -= 360 }
+        if delta <= -180 { delta += 360 }
+        return current + delta
     }
 }
 
