@@ -80,7 +80,10 @@ final class AudioEngine: ObservableObject {
 
     // MARK: - Public control
 
-    var testOverride: Double? = nil
+    /// When set, overrides the live vario reading for sound testing in Settings.
+    /// Must be @Published so the SettingsView slider's "manual_test" label
+    /// re-renders when the user drags the slider.
+    @Published var testOverride: Double? = nil
 
     init() {
         setupAudio()
