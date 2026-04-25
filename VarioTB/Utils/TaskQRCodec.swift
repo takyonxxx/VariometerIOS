@@ -21,34 +21,25 @@ enum TaskQRCodec {
     /// Generate a UIImage QR code containing the given task in XCTrack v2
     /// format (polyline-encoded, compact — same format Flyskyhy produces).
     /// Cross-compatible with XCTrack Android, Flyskyhy iOS, SeeYou Navigator.
-    /// Build a QR image for `task`. The QR's data depends on
-    /// `useStandardFormat`:
+    /// Build a QR image for `task` in the standard XCTrack v2 text
+    /// format (`XCTSK:<json>`) — exactly what Flyskyhy and XCTrack
+    /// produce. Plain text, not a URL: iOS Camera shows the raw
+    /// payload and offers no app handler, so the pilot scans from
+    /// inside whichever flight app they want to import into.
     ///
-    ///   - `false` (default) → `xctsk://<url-safe-base64>` URL.
-    ///     iOS Camera recognises this as a link and offers an
-    ///     "Open in <app>" action; whichever app the user installed
-    ///     last that claims `xctsk://` typically wins.
-    ///
-    ///   - `true` → standard XCTrack `XCTSK:<v2-json>` text. NOT a
-    ///     URL — iOS Camera shows the raw text and offers no app
-    ///     handler. Pilot must scan from inside whichever flight app
-    ///     they want to import into. Useful when sharing with pilots
-    ///     who use Flyskyhy / XCTrack and want to choose explicitly.
+    /// The encoded JSON includes all task fields per the XCTrack v2
+    /// spec:
+    ///   - `version: 2`
+    ///   - `t[]`: turnpoints with `n` (name), `z` (polyline-encoded
+    ///     coordinate + altitude + radius), optional `t` (2=SSS,
+    ///     3=ESS), optional `d` (description)
+    ///   - `s`: start gate timing — `g[]` (HH:MM:SSZ open times),
+    ///     `d` (direction: 1=exit), `t` (type: 1=race)
+    ///   - `g`: goal — `d` (deadline HH:MM:SSZ), `t` (type: 0=cylinder)
+    ///   - `taskType: "CLASSIC"`
     static func generateQR(for task: CompetitionTask,
-                            size: CGFloat = 300,
-                            useStandardFormat: Bool = false) -> UIImage? {
-        let inner = encodeXCTrackV2(task: task)
-        let payload: String
-        if useStandardFormat {
-            // Plain XCTrack text format. Non-URL — not auto-handled.
-            payload = inner
-        } else {
-            let b64 = Data(inner.utf8).base64EncodedString()
-                .replacingOccurrences(of: "+", with: "-")
-                .replacingOccurrences(of: "/", with: "_")
-                .replacingOccurrences(of: "=", with: "")
-            payload = "xctsk://" + b64
-        }
+                            size: CGFloat = 300) -> UIImage? {
+        let payload = encodeXCTrackV2(task: task)
         guard let data = payload.data(using: .utf8) else { return nil }
 
         let filter = CIFilter.qrCodeGenerator()

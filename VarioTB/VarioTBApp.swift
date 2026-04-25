@@ -77,6 +77,9 @@ enum DeepLink {
     static func extractTaskPayload(from url: URL) -> String? {
         let scheme = url.scheme?.lowercased() ?? ""
         let absolute = url.absoluteString
+        print("[DeepLink] scheme=\(scheme)")
+        print("[DeepLink] absoluteString length=\(absolute.count)")
+        print("[DeepLink] first 100: \(String(absolute.prefix(100)))")
 
         // variotb://task?data=…  — our own scheme. Hand the entire URL
         // to TaskQRCodec.decodeTask which knows how to unwrap it.
@@ -87,12 +90,25 @@ enum DeepLink {
         // xctsk:<body>  or  xctsk://<body>  — XCTrack / Flyskyhy
         // compatible. Re-attach the "XCTSK:" prefix so downstream
         // decoding is uniform regardless of exact URL shape.
+        //
+        // Critical detail: when iOS Camera taps a QR whose payload is
+        // `xctsk:{"g":...}` (Flyskyhy-style plain text starting with
+        // the xctsk: prefix), it parses the whole thing as a URL.
+        // JSON syntax characters (`{` `"` `,` etc.) get percent-encoded
+        // along the way — `absoluteString` returns e.g. `xctsk:%7B%22g%22...`.
+        // We must percent-decode the body before handing it to the
+        // JSON decoder, otherwise the decoder sees garbage and fails.
         if scheme == "xctsk" {
             let prefixLen = "xctsk:".count
             guard absolute.count > prefixLen else { return nil }
             var body = String(absolute.dropFirst(prefixLen))
             if body.hasPrefix("//") { body = String(body.dropFirst(2)) }
-            return "XCTSK:" + body
+            // Reverse percent-encoding so `{`, `"`, `,`, etc. survive.
+            // If decoding fails (rare — only for malformed input),
+            // fall back to the raw body so we still try to parse.
+            let decoded = body.removingPercentEncoding ?? body
+            print("[DeepLink] xctsk body after decode (first 100): \(String(decoded.prefix(100)))")
+            return "XCTSK:" + decoded
         }
 
         return nil

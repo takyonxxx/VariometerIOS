@@ -282,10 +282,6 @@ private struct TaskQRShareView: View {
     @ObservedObject var task: CompetitionTask
     @Binding var isPresented: Bool
     @ObservedObject private var language = LanguagePreference.shared
-    /// QR format toggle — read directly from UserDefaults so the share
-    /// sheet stays in sync with whatever the pilot picked in Settings.
-    /// Re-renders the QR image whenever this flips.
-    @AppStorage("qrSchemeStandard") private var qrSchemeStandard: Bool = false
 
     /// TR+UTC human-readable time for the info block. Returns em-dash
     /// when no date is set so the layout doesn't jump.
@@ -370,8 +366,7 @@ private struct TaskQRShareView: View {
                         // rounded corners and soft shadow so it reads
                         // clearly on the dark gradient.
                         if let img = TaskQRCodec.generateQR(for: task,
-                                                              size: 320,
-                                                              useStandardFormat: qrSchemeStandard) {
+                                                              size: 320) {
                             Image(uiImage: img)
                                 .interpolation(.none)
                                 .resizable()
@@ -408,33 +403,6 @@ private struct TaskQRShareView: View {
                         }
                         .padding(.horizontal, 28)
 
-                        // QR format selector — inline so the pilot can
-                        // re-encode the QR for whoever they're sharing
-                        // with right now without diving into settings.
-                        // Persists via @AppStorage("qrSchemeStandard").
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text(L10n.string("qr_format").uppercased())
-                                .font(.system(size: 11, weight: .heavy))
-                                .tracking(1.5)
-                                .foregroundColor(.white.opacity(0.45))
-                                .padding(.leading, 2)
-                            Picker("QR Format", selection: $qrSchemeStandard) {
-                                Text(L10n.string("qr_format_url"))
-                                    .tag(false)
-                                Text(L10n.string("qr_format_standard"))
-                                    .tag(true)
-                            }
-                            .pickerStyle(.segmented)
-                            Text(qrSchemeStandard
-                                 ? L10n.string("qr_format_standard_hint")
-                                 : L10n.string("qr_format_url_hint"))
-                                .font(.system(size: 11))
-                                .foregroundColor(.white.opacity(0.5))
-                                .padding(.leading, 2)
-                                .padding(.top, 2)
-                        }
-                        .padding(.horizontal, 20)
-
                         // Turnpoint list preview — compact, one line each
                         VStack(alignment: .leading, spacing: 6) {
                             Text(L10n.string("task_route").uppercased())
@@ -458,9 +426,7 @@ private struct TaskQRShareView: View {
                         .padding(.horizontal, 20)
 
                         // Footer branding
-                        Text(qrSchemeStandard
-                             ? "XCTSK:  •  XCTrack standard"
-                             : "xctsk://  •  iOS Camera ready")
+                        Text("XCTSK:  •  XCTrack v2 standard")
                             .font(.system(size: 10, weight: .medium, design: .monospaced))
                             .foregroundColor(.white.opacity(0.35))
                             .padding(.top, 4)

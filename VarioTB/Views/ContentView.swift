@@ -70,28 +70,34 @@ struct ContentView: View {
                     .padding(.bottom, 6)
 
                 // Everything else is customizable cards on a grid.
-                // In edit mode we wrap in a ScrollView so the pilot can
-                // reach cards below the fold to reposition them. Outside
-                // edit mode we skip the ScrollView entirely so the panel
-                // is a fixed layout (no accidental drift while flying).
-                // Landscape detection: when the device is rotated, we
-                // skip the ScrollView entirely so PanelView's
-                // GeometryReader sees the real (height-bounded) area
-                // and can re-map the layout via landscapeTransformed().
-                GeometryReader { outerGeo in
-                    let isLandscape = outerGeo.size.width > outerGeo.size.height
-                    Group {
-                        if panelEditMode && !isLandscape {
-                    // Grid goes inside a ScrollView so long layouts can be
-                    // scrolled through during edit, but the reset/confirm
-                    // footer sits OUTSIDE the scroll view as a fixed
-                    // overlay at the bottom — otherwise the pilot has to
-                    // scroll all the way down to reach "Tamam" / "Yarışma"
-                    // / "Serbest". showsIndicators:true keeps the native
-                    // scroll indicator visible so the pilot knows there's
-                    // content below.
-                    ZStack(alignment: .bottom) {
-                        ScrollView(showsIndicators: true) {
+                // PanelView itself reads the available geometry to
+                // decide portrait vs landscape and to size its cards
+                // accordingly — we don't need an outer GeometryReader.
+                //
+                // Wrapping rule: ScrollView ONLY in portrait edit mode
+                // (so the pilot can reach cards below the fold while
+                // dragging). All other times PanelView fills its slot
+                // directly so MapWidget keeps a stable identity across
+                // ticks — wrapping it in conditional branches makes
+                // SwiftUI re-mount the map every render, which causes
+                // the visible flicker.
+                // PanelView is ALWAYS placed in the same spot in the
+                // view tree: inside a ZStack, inside the same ScrollView,
+                // with the same modifiers. Edit mode only changes which
+                // overlay sits on top (the EditFooter) and whether the
+                // ScrollView indicator is visible. This is critical for
+                // SwiftUI identity: the embedded MKMapView keeps its
+                // tile cache, camera, and Metal drawable across edit
+                // mode toggles. Any conditional view-tree branch above
+                // PanelView would mount/unmount MKMapView on each
+                // re-render — visible to the pilot as a constant
+                // flicker (and seen in the log as
+                // `setDrawableSize 0×0` followed by
+                // `[MAP] update#1` resetting).
+                ZStack(alignment: .bottom) {
+                    GeometryReader { outerGeo in
+                        let isLandscape = outerGeo.size.width > outerGeo.size.height
+                        ScrollView(showsIndicators: panelEditMode) {
                             PanelView(settings: settings,
                                       vario: vario,
                                       locationMgr: locationMgr,
@@ -102,65 +108,31 @@ struct ContentView: View {
                                       fitTaskToken: fitTaskToken,
                                       autoFollow: $autoFollow,
                                       editMode: $panelEditMode)
-                                .frame(height: PanelLayout.referenceHeight)
-                                .padding(.horizontal, 12)   // extra room for scroll indicator
+                                // Portrait: fixed reference height so cards
+                                // keep their physical size on every device.
+                                // Landscape: fill the available height so
+                                // PanelView's inner GeometryReader sees a
+                                // wider-than-tall geometry and switches to
+                                // landscapeTransformed() — instruments left,
+                                // map right.
+                                .frame(height: isLandscape
+                                       ? outerGeo.size.height
+                                       : PanelLayout.referenceHeight)
+                                .frame(width: isLandscape
+                                       ? outerGeo.size.width
+                                       : nil)
+                                .padding(.horizontal, panelEditMode ? 12 : 8)
                                 .padding(.top, 4)
-                                .padding(.bottom, 100)      // clear the fixed footer
+                                .padding(.bottom, panelEditMode ? 100 : 6)
                         }
+                        .scrollDisabled(!panelEditMode || isLandscape)
+                    }
+                    if panelEditMode {
                         PanelView.EditFooter(settings: settings,
                                               editMode: $panelEditMode)
                             .padding(.bottom, 8)
                     }
-                } else if isLandscape {
-                    // Landscape: PanelView fills the available height
-                    // directly (no ScrollView wrapper). Inside,
-                    // PanelView detects landscape geometry and uses
-                    // landscapeTransformed() to re-map cards into a
-                    // left-instruments / right-map split.
-                    PanelView(settings: settings,
-                              vario: vario,
-                              locationMgr: locationMgr,
-                              wind: wind,
-                              fai: fai,
-                              task: task,
-                              fitTriangleToken: fitTriangleToken,
-                              fitTaskToken: fitTaskToken,
-                              autoFollow: $autoFollow,
-                              editMode: $panelEditMode)
-                        .frame(width: outerGeo.size.width,
-                               height: outerGeo.size.height)
-                        .padding(.horizontal, 8)
-                        .padding(.top, 4)
-                        .padding(.bottom, 6)
-                } else {
-                    // Portrait non-edit: the panel uses a fixed reference
-                    // height (PanelLayout.referenceHeight) so cards
-                    // retain their physical size across device sizes.
-                    // Wrap in a ScrollView with scroll disabled —
-                    // contents don't move, but anything below the
-                    // viewport is still reachable by long-pressing into
-                    // edit mode first. Most phones fit the full panel
-                    // comfortably; this is the safety net for compact
-                    // devices.
-                    ScrollView(showsIndicators: false) {
-                        PanelView(settings: settings,
-                                  vario: vario,
-                                  locationMgr: locationMgr,
-                                  wind: wind,
-                                  fai: fai,
-                                  task: task,
-                                  fitTriangleToken: fitTriangleToken,
-                                  fitTaskToken: fitTaskToken,
-                                  autoFollow: $autoFollow,
-                                  editMode: $panelEditMode)
-                            .frame(height: PanelLayout.referenceHeight)
-                            .padding(.horizontal, 8)
-                            .padding(.top, 4)
-                            .padding(.bottom, 6)
-                    }
                 }
-                    } // end Group
-                } // end GeometryReader
             }
         }
         .onAppear {

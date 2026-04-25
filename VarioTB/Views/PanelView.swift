@@ -643,6 +643,13 @@ struct PanelView: View {
                                  fitTriangleToken: fitTriangleToken,
                                  fitTaskToken: fitTaskToken,
                                  autoFollow: $autoFollow)
+                    // Pin a stable identity so SwiftUI never substitutes
+                    // a new SatelliteMapView for an old one — that would
+                    // tear down the underlying MKMapView (and its tile
+                    // cache, Metal drawable, camera state) every render
+                    // tick. The constant id forces SwiftUI to update the
+                    // existing view instead.
+                    .id("map-widget")
                     .allowsHitTesting(!editMode)
 
                 // Recenter floating button — appears when the pilot has
