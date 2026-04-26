@@ -1,6 +1,6 @@
 # Vario TB — iOS Paragliding Variometer
 
-Yamaç paraşütü ve planör pilotları için SwiftUI ile yazılmış, **serbest pixel konumlandırmalı özelleştirilebilir panel** odaklı variometer uygulaması. Türkçe/İngilizce arayüz, uydu haritası, barometrik vario, **heading-up rüzgâr kadranı**, termik radarı, **canlı + FAI-validated çift katmanlı üçgen tespiti**, **XCTrack-uyumlu yarışma görevleri (QR + deep link)**, **pilot konumundan tetiklenen FAI practice simülatörü**, IGC uçuş kaydı, LiveTrack24 canlı takip ve Siri Shortcuts içerir.
+Yamaç paraşütü ve planör pilotları için SwiftUI ile yazılmış, **serbest pixel konumlandırmalı özelleştirilebilir panel** odaklı variometer uygulaması. Türkçe/İngilizce arayüz, uydu haritası, barometrik vario, **heading-up rüzgâr kadranı**, termik radarı, **canlı + FAI-validated çift katmanlı üçgen tespiti**, **XCTrack v2 uyumlu yarışma görevleri (XCTSK QR)**, **pilot konumundan tetiklenen FAI practice simülatörü**, IGC uçuş kaydı, LiveTrack24 canlı takip ve Siri Shortcuts içerir.
 
 **Hedef cihaz:** iPhone 15/16 Pro (iOS 17+) — barometre ve yüksek-hassasiyetli GPS gerekir.
 
@@ -31,7 +31,7 @@ Yamaç paraşütü ve planör pilotları için SwiftUI ile yazılmış, **serbes
 <p align="center">
   <i>1. <b>Yarışma layout</b> — vario (sol üst), HEDEF oku (sağ üst), yer hızı/rakım, sonraki TP / goal mesafesi, harita (altta) üzerinde rüzgâr kadranı + termik radarı overlay, saat/pil alt satırda.</i><br><br>
   <i>2. <b>Yarışma Görevi editörü</b> — QR tara / QR paylaş, turnpoint listesi (tip + yarıçap + kümülatif mesafe), start time / deadline, toplam optimum mesafe.</i><br><br>
-  <i>3. <b>Task QR paylaşımı</b> — <code>variotb://task?data=&lt;base64&gt;</code> formatında QR kod. iOS kamera tarayınca doğrudan Vario TB'yi açar.</i><br><br>
+  <i>3. <b>Task QR paylaşımı</b> — XCTrack v2 standardında <code>XCTSK:&lt;json&gt;</code> plaintext QR. Flyskyhy/XCTrack/SeeYou Navigator ile uyumlu — pilot hangi flight app'i kullanırsa kullansın aynı QR'ı app içi tarayıcıyla okur, çakışma yok.</i><br><br>
   <i>4. <b>Uçuş kayıtları</b> — <code>Documents/Flights/*.igc</code> (gerçek uçuş: mavi uçak ikonu) + <code>Documents/Waypoints/thermals_*.cup</code> (sarı pin ikonu). <b>SIM etiketli dosyalar</b> simülatör kayıtlarıdır. Dosya başına paylaş ikonu, swipe-to-delete, üstte <b>Share All / Delete All</b> toplu işlemler.</i><br><br>
   <i>5. <b>FAI üçgen practice modu</b> — task yokken SIM butonuna basıldığında pilotun anlık GPS konumundan başlayıp 12.5 km GB → 8.75 km K → kapanış (~8.84 km, çevre ~30 km) bacaklarıyla FAI-valid bir üçgen uçar. Harita sol-altta yeşil "FAI TRIANGLE 30.3 km" pill'i + alt satırda canlı path uzunluğu (32.2 km — pilotun yere göre kat ettiği yol). Tüm bacaklar uçulduğunda ve pilot takeoff'a 6 km'den yakınsa üçgen yeşil dolu olur (kapandı).</i><br><br>
   <i>6. <b>Yatay mod</b> — telefon yatay çevrildiğinde kartlar otomatik yeniden yerleşir: tüm enstrüman okumaları sol yarıda 2'şer 2'şer satırlarda (vario + HEDEF, yer hızı + rakım, SSS + GOAL, saat + pil), harita sağ yarıda tam yükseklik (rüzgâr kadranı + termik radarı overlay).</i>
@@ -60,10 +60,10 @@ Yamaç paraşütü ve planör pilotları için SwiftUI ile yazılmış, **serbes
 
 ### XCTrack-uyumlu yarışma görevleri
 
-- **QR + deep link paylaşımı** — uygulamanın ürettiği QR kod `variotb://task?data=<base64>` formatında. iOS kamera taradığında **doğrudan Vario TB'yi açar**, Flyskyhy/XCTrack gibi diğer flight app'lerle çakışma yok. Harici XCTrack `xctsk://` QR'ları **app içi QR tarayıcıdan** parse edilir — iOS Camera'dan değil, çünkü `xctsk:` schema'sı Flyskyhy'a bırakılmıştır (detay aşağıda URL scheme'ler bölümünde).
+- **QR paylaşımı (XCTrack v2 standart)** — uygulamanın ürettiği QR kod `XCTSK:<v2-json>` plaintext formatında, **Flyskyhy ve XCTrack ile bire-bir aynı format**. Plain text olduğu için iOS Kamera'da deep link olarak açılmaz, raw payload görünür — pilot hangi flight app'inde import etmek istiyorsa onun içinden tarar. Çakışma yok, "ezme" yok. Vario TB'nin app içi QR tarayıcısı (Yarışma Görevi → QR Tara) hem kendi ürettiği hem Flyskyhy/XCTrack'tan gelen QR'ları aynı parser ile okur — `XCTSK:` / `XCTSKZ:` / `xctsk:<body>` / `xctsk://<body>` varyantlarının hepsi destekli.
 - **İki açılış yolu**:
-  1. **App içi QR tarayıcı** — "Yarışma Görevi" → QR tara butonuyla kamera açılır.
-  2. **iOS Camera deep link** — QR'ı iOS'un sistem kamerası okur, üst banner'dan "Vario TB'de Aç" → task editör.
+  1. **App içi QR tarayıcı (önerilen)** — "Yarışma Görevi" → QR tara butonuyla kamera açılır. Hem Vario TB'nin kendi QR'larını hem dışarıdan gelen Flyskyhy/XCTrack QR'larını okur.
+  2. **`variotb://` deep link** — başka bir kanaldan (e-posta linki, Mesajlar, web sayfası vs.) `variotb://task?data=<url-safe-base64>` URL'i tıklanırsa iOS doğrudan Vario TB'yi açar. Bu schema'yı başka uçuş app'i claim etmediği için çakışma yok. Ancak şu an Vario TB'nin **paylaştığı QR'lar bu URL formatını kullanmaz** — düz `XCTSK:` plaintext üretir ki Flyskyhy/XCTrack ile uyumlu kalsın.
 - **Turnpoint tipleri** — Takeoff, SSS (Start of Speed Section), Turnpoint, ESS (End of Speed Section), Goal. Her TP için silindir yarıçapı, irtifa, ENTRY/EXIT semantiği.
 - **Görev zamanlaması** — başlama saati ve deadline (UTC), UI üzerinden set/clear.
 - **Optimum tangent rota** — bisector relaxation + goal-side fallback (concentric/dejenere durumlar için). Mavi çizgi haritada canlı gözükür.
@@ -209,9 +209,11 @@ open VarioTB.xcodeproj
 
 Info.plist tek bir scheme claim eder:
 
-- `variotb://task?data=<base64>` — **kendi QR formatımız**, iOS kamera tarayınca doğrudan Vario TB açılır. Hiçbir başka uçuş app'i bu schema'yı kullanmaz, çakışma yok.
+- `variotb://task?data=<url-safe-base64>` — Vario TB'ye özgü deep link. Hiçbir başka uçuş app'i bu schema'yı kullanmaz, çakışma yok. Şu an **Vario TB'nin paylaştığı QR'lar bu URL'i kullanmaz** (XCTSK: plaintext kullanır), ama schema kayıtlı durumda — başka kanaldan (e-posta, web, Mesajlar) gelen `variotb://` linkleri iOS doğrudan Vario TB'de açar.
 
-**`xctsk:` schema'sı bilinçli olarak claim edilmemiştir.** XCTrack ve Flyskyhy bu schema'yı zaten claim ediyor; biz de claim etseydik iOS hangi app'in açılacağını seçemediğinden (kullanıcıya seçenek sunmadan en son kurulan app'i kullanır) kullanıcıların **alıştığı Flyskyhy davranışı bozulur**, beklenmedik biçimde Vario TB açılırdı. Pilot xctsk QR'larını yine tarayabilir — **app içi QR tarayıcı** (Yarışma Görevi → QR Tara) doğrudan kameraya bağlanır ve `xctsk:` payload'larını parse eder, iOS deep-link resolver'ına dokunmadan. Ya da pilot Vario TB'den QR oluşturduğunda biz `variotb://` formatını kullandığımız için iOS Camera onu kesin olarak Vario TB'de açar.
+**`xctsk:` schema'sı bilinçli olarak claim edilmemiştir.** XCTrack ve Flyskyhy bu schema'yı zaten claim ediyor; biz de claim etseydik iOS hangi app'in açılacağını seçemediğinden (kullanıcıya seçenek sunmadan en son kurulan app'i seçer) kullanıcıların **alıştığı Flyskyhy davranışı bozulur**, beklenmedik biçimde Vario TB açılırdı. Pilot xctsk QR'larını yine tarayabilir — **app içi QR tarayıcı** (Yarışma Görevi → QR Tara) doğrudan kameraya bağlanır ve `xctsk:`/`XCTSK:`/`XCTSKZ:` payload'larının hepsini parse eder, iOS deep-link resolver'ına dokunmadan.
+
+**Vario TB'nin ürettiği QR formatı:** Düz `XCTSK:<v2-json>` plaintext. Bu format Flyskyhy ve XCTrack ile bire-bir aynıdır (aynı codec). iOS Kamera bunu deep link olarak değil raw text olarak gösterir — çakışma sorunu doğmaz, kullanıcı app içinden import eder.
 
 ---
 
@@ -250,7 +252,7 @@ Info.plist tek bir scheme claim eder:
     │   └── ChimePlayer.swift          Reach chime (C5-E5-G5 arpeggio)
     ├── Utils/
     │   ├── CoordConverter.swift       DMS/DM/UTM/MGRS dönüşümleri
-    │   └── TaskQRCodec.swift          XCTrack v1/v2 + variotb:// wrapper
+    │   └── TaskQRCodec.swift          XCTSK: v1/v2 encoder + decoder (variotb:// wrapper desteği geri uyumluluk için)
     └── Views/
         ├── ContentView.swift          ZStack + panel + deep link drain
         ├── PanelView.swift            Pixel layout renderer + drag/resize + soft snap + zIndex split
@@ -294,7 +296,7 @@ Info.plist tek bir scheme claim eder:
 
 **Deep link akışı.** Sadece `variotb://` schema'sı iOS'a kaydedildi. `VarioTBApp.onOpenURL` URL'yi parse eder, warm launch'ta NotificationCenter ile, cold launch'ta `DeepLink.pendingPayload` static stash ile `ContentView`'a iletir. `ContentView` task editör sheet'ini açar, `CompetitionTaskView.onAppear` payload'u drain edip QR scan akışına sokar. `xctsk:` URL'leri iOS Camera tarafından artık Vario TB'ye yönlendirilmez (Flyskyhy önceliği), ama kod içinde `xctsk:` parser hâlâ vardır — app içi QR tarayıcı (kamera) `xctsk:` payload'larını yakalar ve aynı pipeline'a sokar.
 
-**QR format.** `generateQR` artık XCTrack v2 payload'unu `variotb://task?data=<url-safe-base64>` içine sarar. Kendi app'imiz için iOS kamera tarayınca direkt açılır. XCTrack'tan gelen plain `XCTSK:` / `XCTSKZ:` / `xctsk:` QR'ları eski kodla parse edilmeye devam eder — geri uyumlu.
+**QR format.** `generateQR` artık XCTrack v2 standart `XCTSK:<json>` plaintext üretir — Flyskyhy ve XCTrack ile bire-bir aynı. SSS open time (root.s.g[]) ve goal deadline (root.g.d) UTC HH:MM:SSZ formatında yazılır. Decoder tüm yaygın varyantları kabul eder: `XCTSK:` (v1/v2 plain), `XCTSKZ:` (zlib + base64 sıkıştırılmış), `xctsk:<body>`, `xctsk://<body>`, `variotb://task?data=<url-safe-base64-of-XCTSK>`. Encoder URL-wrapper kullanmaz (plaintext çıkar) ama decoder URL formatlarını da çözer — başka bir kanaldan gelen wrapped link gerekirse desteklenir.
 
 **Simulator routing.** İki tetikleyici: task yüklü ise `loadTask(waypoints:routePoints:)` (haritadaki blue line noktalarını alır), task yoksa `loadFAITrianglePractice(from:pilotAltM:)` (pilot konumundan 4-noktalı üçgen route üretir, `destination(from:bearingDeg:distanceKm:)` great-circle helper'ı ile). Her iki yol da `taskWaypoints`'i doldurur, sonra `start()` aynı path-follower'ı çalıştırır. `.taskLeg` basit bir path-follower — point'e 10m kala sıradakine geçer. Altitude 2000m altına düşünce `.taskClimb` (4 m/s termik) devreye girer, 2500m'e ulaşınca rota takibine devam eder.
 
