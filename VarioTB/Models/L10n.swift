@@ -143,9 +143,15 @@ enum L10n {
             "about_text":       "Yamaç paraşütü / planör için variometer, termik radar, rüzgâr yönü ve GPS göstergesi.",
 
             // FAI triangle HUD
-            "fai_triangle":     "FAI Üçgeni",
-            "fai_closed":       "Kapalı üçgen",
-            "fai_closing":      "Kapatma",
+            "fai_triangle":          "FAI Üçgeni",
+            "fai_closed":            "Kapalı üçgen",
+            "fai_closing":           "Kapatma",
+            // Map-corner FAI distance pill — yellow ("estimate") while
+            // the triangle is still open and could grow as the pilot
+            // flies further; green ("triangle") once the closing-leg
+            // gate fires and the perimeter is locked in as the score.
+            "fai_estimate_label":    "TAHMİNİ",
+            "fai_triangle_label":    "FAI ÜÇGENİ",
 
             // Competition task
             "competition_task":    "Yarışma Görevi",
@@ -354,9 +360,13 @@ enum L10n {
             "about_text":       "Variometer, thermal radar, wind direction and GPS indicator for paragliding / gliding.",
 
             // FAI triangle HUD
-            "fai_triangle":     "FAI Triangle",
-            "fai_closed":       "Closed triangle",
-            "fai_closing":      "Closing",
+            // FAI triangle HUD
+            "fai_triangle":          "FAI Triangle",
+            "fai_closed":            "Closed triangle",
+            "fai_closing":           "Closing",
+            // Map-corner FAI distance pill (see Turkish comment above).
+            "fai_estimate_label":    "ESTIMATE",
+            "fai_triangle_label":    "FAI TRIANGLE",
 
             // Competition task
             "competition_task":    "Competition Task",

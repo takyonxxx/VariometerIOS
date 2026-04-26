@@ -38,26 +38,60 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
     /// ≤ 30° as "trustworthy" for the bestHeadingDeg selector.
     @Published var headingAccuracyDeg: Double = -1
 
-    /// Preferred direction value for UI and navigation. Picks whichever
-    /// source is most reliable at this moment:
+    /// Speed threshold (m/s) below which GPS course is considered
+    /// unreliable. Below this we fall back to the magnetometer.
+    /// 1 m/s ≈ 3.6 km/h — well below normal paraglider trim speed
+    /// (~30 km/h), so in actual flight we're always above the
+    /// threshold and the GPS path dominates. Symmetric with the
+    /// gpsCourseDeg gate in didUpdateLocations and the WindEstimator
+    /// gate downstream, so all three sources of "is the pilot really
+    /// moving?" agree.
+    private static let gpsHeadingMinSpeedMps: Double = 1.0
+
+    /// Preferred heading for UI and navigation. Picks the most
+    /// physically meaningful source for the current flight state:
     ///
-    ///   - Compass (magnetometer) heading: used when heading accuracy
-    ///     is positive and ≤ 30°. Works whether the pilot is moving or
-    ///     not, so arrows stay alive while hanging under the canopy
-    ///     waiting for the start gate.
-    ///   - GPS course-over-ground: fallback when the compass is
-    ///     uncalibrated or unavailable. Only meaningful while moving,
-    ///     but it's always available when there's a GPS fix.
+    ///   - GPS course-over-ground (PRIMARY): the direction the pilot
+    ///     is actually MOVING, which is what every certified flight
+    ///     instrument (XCTrack, Skytraxx, Naviter, Flymaster, Syride)
+    ///     uses. Independent of how the phone happens to be oriented
+    ///     in the harness, pocket, or kneeboard. Used whenever GPS
+    ///     fix is good and the pilot is moving above the speed
+    ///     threshold.
+    ///   - Magnetic compass (FALLBACK): used while stationary or in
+    ///     very slow flight when GPS course is too noisy to be
+    ///     meaningful. Also forced as the primary source in
+    ///     simulator mode so the pilot can rotate the phone to
+    ///     verify the dial behaviour by hand. Compass is gated by
+    ///     headingAccuracyDeg ≤ 30° to reject uncalibrated readings.
     ///
-    /// This applies to simulated flight too: the sim injects synthetic
-    /// course/heading values but we deliberately ignore them for the
-    /// direction arrow so the pilot can calibrate the card by physically
-    /// rotating the phone — just like in real flight. The arrow then
-    /// reflects the device's compass, not the sim's pretend course.
+    /// gpsCourseDeg is updated independently in didUpdateLocations so
+    /// the WindEstimator always sees the raw circular track when the
+    /// pilot is thermalling, regardless of which source this selector
+    /// picks for the UI.
     var bestHeadingDeg: Double {
+        // Sim mode: keep the manual-rotation test path alive so the
+        // pilot can sanity-check the dial by physically turning the
+        // phone, even though the simulator is feeding pretend speeds.
+        if simulatedMode {
+            if headingAccuracyDeg > 0 && headingAccuracyDeg <= 30 {
+                return headingDeg
+            }
+            return courseDeg
+        }
+        // Real flight: GPS course wins as long as it's valid AND the
+        // pilot is moving fast enough for the track vector to be
+        // physically meaningful.
+        if gpsCourseDeg >= 0 && groundSpeedKmh / 3.6 >= Self.gpsHeadingMinSpeedMps {
+            return gpsCourseDeg
+        }
+        // Slow / stationary: fall back to the compass if calibrated.
         if headingAccuracyDeg > 0 && headingAccuracyDeg <= 30 {
             return headingDeg
         }
+        // Last resort — return whatever we have. courseDeg holds the
+        // most recently chosen source from didUpdateLocations and
+        // didUpdateHeading, smoothed.
         return courseDeg
     }
     @Published var horizontalAccuracy: Double = -1  // m

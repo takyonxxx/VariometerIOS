@@ -126,10 +126,24 @@ final class LiveTrack24Tracker: ObservableObject {
     /// Call from the main tick (~1 Hz is ideal; we de-duplicate by timestamp).
     func recordFix() {
         guard isActive, let lm = locationMgr, lm.hasFix, let c = lm.coordinate else { return }
+        // COG (Course Over Ground) MUST be the GPS-derived ground track,
+        // not the magnetic compass heading. LiveTrack24 expects the
+        // direction the pilot is *moving*, which is what every tracking
+        // protocol means by "course". Using the compass-backed
+        // courseDeg here would have sent the phone's pointing direction
+        // — wrong while gliding through wind drift, and meaningless
+        // when the phone is strapped sideways in a harness.
+        //
+        // gpsCourseDeg is -1 until the pilot starts moving fast enough
+        // for the GPS track vector to be meaningful. In that case we
+        // send 0, which servers tolerate as "course unknown" — the
+        // alternative (skipping the fix) would lose the lat/lon/alt
+        // data the tracking page does need.
+        let cog = lm.gpsCourseDeg >= 0 ? lm.gpsCourseDeg : 0
         let fix = Fix(lat: c.latitude, lon: c.longitude,
                       alt: lm.fusedAltitude,
                       sogKmh: lm.groundSpeedKmh,
-                      cogDeg: lm.courseDeg,
+                      cogDeg: cog,
                       tm: Date().timeIntervalSince1970)
         lock.lock()
         pendingFixes.append(fix)

@@ -6,7 +6,18 @@ struct SatelliteMapView: UIViewRepresentable {
     let coordinate: CLLocationCoordinate2D?
     let heading: Double
     let thermals: [ThermalPoint]
+    /// FAI-VALIDATED triangle (drawn green/amber depending on isClosed).
+    /// nil while the brute-force search hasn't found a triangle that
+    /// satisfies the 28% leg ratio.
     let triangle: FAITriangle?
+    /// PROVISIONAL "what am I currently flying" triangle. Three corners:
+    /// takeoff, the farthest point reached, the live pilot position.
+    /// Drawn dashed yellow. Independent of FAI rules — exists as soon
+    /// as the pilot has flown a meaningfully-sized shape. May be drawn
+    /// alongside `triangle`: the validated green triangle is layered
+    /// on top of the dashed yellow one, so both are visible while the
+    /// flight grows.
+    let provisionalTriangle: FAITriangle?
     let flightStart: CLLocationCoordinate2D?   // for closing arrow
     let task: CompetitionTask?                  // competition task overlay
     /// Changes to this UUID trigger a one-time "zoom to fit the whole
@@ -132,13 +143,29 @@ struct SatelliteMapView: UIViewRepresentable {
             mv.addAnnotation(a)
         }
 
-        // Sync FAI triangle overlay.
+        // Sync FAI triangle overlays. We track two independently:
+        // - ProvisionalTriangleOverlay (always dashed amber): the
+        //   "shape I'm flying right now" triangle, present whenever
+        //   the detector emits one.
+        // - TriangleOverlay (green/amber by isClosed): the FAI-valid
+        //   triangle once brute-force has found one. Drawn ON TOP of
+        //   the provisional so the validated geometry wins visually
+        //   when both exist.
+        for overlay in mv.overlays where overlay is ProvisionalTriangleOverlay {
+            mv.removeOverlay(overlay)
+        }
+        if let prov = provisionalTriangle {
+            // Add the provisional first so the valid triangle (added
+            // below) renders on top of it via MapKit's overlay order.
+            mv.addOverlay(ProvisionalTriangleOverlay(triangle: prov),
+                          level: .aboveLabels)
+        }
         for overlay in mv.overlays where overlay is TriangleOverlay {
             mv.removeOverlay(overlay)
         }
         if let tri = triangle {
             let ov = TriangleOverlay(triangle: tri)
-            mv.addOverlay(ov)
+            mv.addOverlay(ov, level: .aboveLabels)
         }
 
         // Sync closing arrow overlay — drawn only while the triangle is
@@ -624,6 +651,9 @@ struct SatelliteMapView: UIViewRepresentable {
             if let tri = overlay as? TriangleOverlay {
                 return TriangleOverlayRenderer(triangleOverlay: tri)
             }
+            if let prov = overlay as? ProvisionalTriangleOverlay {
+                return ProvisionalTriangleOverlayRenderer(provisionalOverlay: prov)
+            }
             if let arrow = overlay as? ClosingArrowOverlay {
                 return ClosingArrowRenderer(arrowOverlay: arrow)
             }
@@ -827,9 +857,54 @@ final class TriangleOverlayRenderer: MKPolygonRenderer {
             ? UIColor(red: 0.35, green: 0.95, blue: 0.55, alpha: 1.0)
             : UIColor(red: 1.0,  green: 0.80, blue: 0.30, alpha: 1.0)
         strokeColor = stroke
-        fillColor = stroke.withAlphaComponent(0.12)
-        lineWidth = 2.5
-        lineDashPattern = isClosed ? nil : [8, 6]   // dashed when not yet closed
+        fillColor = stroke.withAlphaComponent(0.10)
+        // Slimmer stroke than before (was 2.5) — the FAI triangle is
+        // a fairly large polygon spanning the map, a 2.5pt edge ends
+        // up reading as a heavy yellow band that competes with the
+        // pilot trail and city labels.
+        lineWidth = 1.8
+        lineDashPattern = isClosed ? nil : [8, 6]
+    }
+}
+
+/// MapKit polygon overlay for the PROVISIONAL "currently flying"
+/// triangle. Always drawn dashed amber — this overlay only exists to
+/// show the pilot the shape they're flying right now, not to claim
+/// FAI validity. When a real FAI-validated triangle also exists, that
+/// other (green/solid) overlay is drawn on top of this one.
+final class ProvisionalTriangleOverlay: NSObject, MKOverlay {
+    let triangle: FAITriangle
+    let polygon: MKPolygon
+
+    var coordinate: CLLocationCoordinate2D { polygon.coordinate }
+    var boundingMapRect: MKMapRect { polygon.boundingMapRect }
+
+    init(triangle: FAITriangle) {
+        self.triangle = triangle
+        var coords = [triangle.tp1, triangle.tp2, triangle.tp3]
+        self.polygon = MKPolygon(coordinates: &coords, count: 3)
+        super.init()
+    }
+}
+
+/// Renderer for the provisional triangle. Drawn in a different color
+/// from the validated FAI triangle (cyan vs amber) so the two never
+/// get visually confused when the validated one appears alongside the
+/// provisional one at the same instant. Also slimmer and more
+/// translucent — this overlay is a "hint" of the current shape, not
+/// a primary scoring readout, so it shouldn't compete visually with
+/// the validated triangle once that exists.
+final class ProvisionalTriangleOverlayRenderer: MKPolygonRenderer {
+    init(provisionalOverlay: ProvisionalTriangleOverlay) {
+        super.init(polygon: provisionalOverlay.polygon)
+        // Cyan tone — matches the cyan accents used elsewhere in the
+        // app (north markers, pilot heading triangle in WindDial),
+        // signalling "live / current" rather than "scored".
+        let cyan = UIColor(red: 0.45, green: 0.85, blue: 1.0, alpha: 1.0)
+        strokeColor = cyan.withAlphaComponent(0.65)
+        fillColor   = cyan.withAlphaComponent(0.05)
+        lineWidth = 1.4
+        lineDashPattern = [6, 5]
     }
 }
 

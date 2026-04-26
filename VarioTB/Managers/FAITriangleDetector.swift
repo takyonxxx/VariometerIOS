@@ -32,11 +32,38 @@ import Combine
 /// run O(n³) on ~120 points (~1.7M combinations). On a modern iPhone this
 /// runs in well under 100ms, and we only re-run every 10 seconds.
 final class FAITriangleDetector: ObservableObject {
-    // Published best triangle found so far.
-    @Published var bestTriangle: FAITriangle?
+    /// FAI-VALIDATED best triangle (the old `bestTriangle`). This is the
+    /// brute-force result that's cleared the 28% min-leg ratio. Drawn in
+    /// green on the map and used for the official perimeter / score.
+    /// `nil` until the pilot has flown a geometry that satisfies FAI.
+    @Published var validTriangle: FAITriangle?
+
+    /// PROVISIONAL "what am I currently flying" triangle. Always defined
+    /// once flightStart and at least one keypoint exist. The three
+    /// corners are:
+    ///   1. flightStart (takeoff)
+    ///   2. The farthest point reached so far (the natural "outermost"
+    ///      turnpoint of the flight up to now)
+    ///   3. The pilot's current location
+    /// This is FAI-INDEPENDENT — we don't apply the 28% leg ratio. It's
+    /// the visual "shape of the flight right now" so the pilot can
+    /// watch the triangle grow as they fly. Drawn dashed yellow.
+    /// When validTriangle is set, the map can show both: yellow under,
+    /// green on top, so the pilot sees both "current shape" and
+    /// "validated FAI". Falls back to nil before any keypoints exist.
+    @Published var provisionalTriangle: FAITriangle?
+
     /// The first GPS fix recorded, used as the triangle's "home" / closing
     /// reference point. Published so views can draw a closing arrow toward it.
     @Published var flightStart: CLLocationCoordinate2D?
+
+    /// Cumulative path length the pilot has actually flown since
+    /// `start()`, in metres. Computed by summing the great-circle
+    /// distance between every consecutive *raw* fix as they arrive in
+    /// `recordFix(...)` — independent of the keypoint thinning, so this
+    /// is the real "how far have I flown" number, not the geometric
+    /// perimeter of any detected triangle.
+    @Published var pathLengthM: Double = 0
 
     // Thinned key points from the track. Each one is >= `minSpacingM`
     // from all previously kept points.
@@ -44,9 +71,32 @@ final class FAITriangleDetector: ObservableObject {
     private let minSpacingM: Double = 200.0
     private let maxKeyPoints: Int = 150
 
+    /// Index of the keypoint that is currently the farthest from
+    /// flightStart. Cached so recordFix can update the provisional
+    /// triangle in O(1) per fix instead of rescanning keyPoints.
+    /// `-1` when no keypoints exist yet.
+    private var farthestKeyIdx: Int = -1
+    private var farthestKeyDistM: Double = 0
+
+    /// Last raw fix coordinate seen by recordFix(), used as the start
+    /// of the next path-length segment. nil before the first fix.
+    private var lastRawFix: CLLocationCoordinate2D?
+
+    /// Most recent pilot coordinate (every fix, not just thinned
+    /// keypoints). Needed as the third vertex of the provisional
+    /// triangle, which must track the pilot in real time rather than
+    /// jumping between thinned keypoints.
+    private var currentCoord: CLLocationCoordinate2D?
+
     // How often to recompute.
     private var recomputeTimer: Timer?
     private let recomputeInterval: TimeInterval = 10.0
+
+    /// True while the recompute timer is running — i.e. between
+    /// `start()` and `stop()`. Drives lifecycle decisions in
+    /// ContentView so we don't reset the detector mid-flight when
+    /// the recorder and simulator both transition.
+    var isActive: Bool { recomputeTimer != nil }
 
     weak var locationMgr: LocationManager?
 
@@ -60,7 +110,13 @@ final class FAITriangleDetector: ObservableObject {
     func start() {
         flightStart = nil
         keyPoints.removeAll()
-        bestTriangle = nil
+        validTriangle = nil
+        provisionalTriangle = nil
+        pathLengthM = 0
+        farthestKeyIdx = -1
+        farthestKeyDistM = 0
+        lastRawFix = nil
+        currentCoord = nil
         recomputeTimer?.invalidate()
         recomputeTimer = Timer.scheduledTimer(withTimeInterval: recomputeInterval,
                                               repeats: true) { [weak self] _ in
@@ -74,26 +130,175 @@ final class FAITriangleDetector: ObservableObject {
     }
 
     /// Call from the main app tick to feed new fixes.
-    /// We thin aggressively — points < minSpacingM from the last key point
-    /// are dropped, so memory stays bounded.
+    /// We thin aggressively for the brute-force buffer — points
+    /// < minSpacingM from the last key point are dropped, so memory
+    /// stays bounded. But path length and the provisional triangle's
+    /// "current location" vertex are updated from EVERY fix so the
+    /// pilot sees them tracking smoothly in real time.
     func recordFix() {
         guard let lm = locationMgr, lm.hasFix, let c = lm.coordinate else { return }
 
+        // ---- Cumulative path length: add great-circle segment from
+        // the previous raw fix to this one. We do this BEFORE updating
+        // lastRawFix so the segment uses the previous→current pair.
+        if let prev = lastRawFix {
+            let seg = Self.distanceM(prev, c)
+            // Reject pathological GPS jumps (>2 km between adjacent
+            // fixes) to avoid corrupting pathLengthM with bad fixes.
+            // Real flight speeds rarely exceed 30 m/s ≈ 30 m per 1 Hz
+            // tick, so anything over 2 km is almost certainly noise.
+            if seg < 2000 {
+                pathLengthM += seg
+            }
+        }
+        lastRawFix = c
+        currentCoord = c
+
+        // ---- Flight start anchor (first fix only).
         if flightStart == nil {
             flightStart = c
         }
 
+        // ---- Key-point thinning: only append if far enough from the
+        // last keypoint. Most fixes are skipped here, which is fine —
+        // the brute-force search needs spread-out points, not raw fixes.
+        var addedKeypoint = false
         if let last = keyPoints.last {
-            let d = distanceM(last, c)
-            if d < minSpacingM { return }
+            let d = Self.distanceM(last, c)
+            if d >= minSpacingM {
+                keyPoints.append(c)
+                addedKeypoint = true
+            }
+        } else {
+            keyPoints.append(c)
+            addedKeypoint = true
         }
 
-        keyPoints.append(c)
-
-        // Cap the buffer
-        if keyPoints.count > maxKeyPoints {
+        if addedKeypoint && keyPoints.count > maxKeyPoints {
             thinBuffer()
+            // After thinning, the cached farthest index may be stale.
+            // Rebuild it from scratch — cheap (≤150 points).
+            recomputeFarthest()
         }
+
+        // ---- Track the farthest keypoint from flightStart. Used as
+        // the "outer" corner of the provisional triangle. We only need
+        // to check the new keypoint vs the cached farthest distance —
+        // O(1) per fix.
+        if addedKeypoint, let start = flightStart {
+            let d = Self.distanceM(start, c)
+            if d > farthestKeyDistM {
+                farthestKeyDistM = d
+                farthestKeyIdx = keyPoints.count - 1
+            }
+        }
+
+        // ---- Update the provisional triangle. Three vertices:
+        //   1. flightStart        (takeoff)
+        //   2. keyPoints[farthest] (outer turnpoint)
+        //   3. currentCoord       (live pilot position)
+        // We update on EVERY fix, not just keypoint additions, so the
+        // third vertex slides smoothly with the pilot. The triangle is
+        // suppressed when the three vertices haven't pulled apart yet
+        // (e.g. pilot still right at takeoff) — anything too small to
+        // be visually meaningful (< 100 m on its shortest side) is
+        // hidden to avoid a flickering speck under the paraglider icon.
+        updateProvisional()
+    }
+
+    /// Recompute the provisional ("what am I flying right now") triangle
+    /// from current state. Called on every fix so the live-position
+    /// vertex tracks the pilot smoothly.
+    ///
+    /// Two gates suppress the triangle when the geometry isn't
+    /// meaningfully triangular yet:
+    ///
+    ///   1. **Min-side gate**: Each leg must be at least 500 m. Below
+    ///      that the "triangle" is just a paraglider-sized blob on the
+    ///      map — not a useful visual.
+    ///
+    ///   2. **Turn-angle gate**: The pilot must have actually TURNED
+    ///      at the outer vertex. We compute the interior angle at
+    ///      `outer` between the takeoff→outer leg and the outer→pilot
+    ///      leg. On a straight outbound flight this angle stays close
+    ///      to 180° (pilot is still flying outward, no turn yet); on a
+    ///      genuine turn it drops well below that. Threshold 150° lets
+    ///      the triangle appear once the pilot has clearly committed
+    ///      to a new heading. Until then we hide the dashed yellow
+    ///      outline so it doesn't suggest a triangle that doesn't
+    ///      really exist yet.
+    private static let provisionalMinLegM: Double = 500.0
+    private static let provisionalMaxAngleDeg: Double = 150.0
+
+    private func updateProvisional() {
+        guard let start = flightStart,
+              let cur = currentCoord,
+              farthestKeyIdx >= 0,
+              farthestKeyIdx < keyPoints.count else {
+            provisionalTriangle = nil
+            return
+        }
+        let outer = keyPoints[farthestKeyIdx]
+        let a = Self.distanceM(start, outer)   // takeoff → outer
+        let b = Self.distanceM(outer, cur)     // outer → pilot
+        let c = Self.distanceM(cur, start)     // pilot → takeoff
+
+        // Min-side gate.
+        if min(a, min(b, c)) < Self.provisionalMinLegM {
+            provisionalTriangle = nil
+            return
+        }
+
+        // Turn-angle gate: interior angle at `outer`. Use the law of
+        // cosines on the triangle's sides — given sides a (takeoff↔
+        // outer) and b (outer↔pilot) meeting at outer, with c being
+        // the opposite side (takeoff↔pilot):
+        //   cos(angle_at_outer) = (a² + b² − c²) / (2 · a · b)
+        // angle close to 180° → cos ≈ −1 → pilot is still flying
+        // straight outward past the outer point, no real turn yet.
+        // angle dropping below 150° → pilot has clearly turned.
+        let cosAngle = (a*a + b*b - c*c) / (2 * a * b)
+        // Clamp to handle floating-point drift past ±1.
+        let clamped = max(-1.0, min(1.0, cosAngle))
+        let angleDeg = acos(clamped) * 180 / .pi
+        if angleDeg > Self.provisionalMaxAngleDeg {
+            provisionalTriangle = nil
+            return
+        }
+
+        let perim = a + b + c
+        let closingDist = Self.distanceM(start, cur)
+        // The provisional triangle's "isClosed" doesn't gate FAI
+        // validity (that's validTriangle's job), it just reports the
+        // current closing geometry to whoever wants to display it.
+        let isClosed = closingDist <= perim * 0.20
+        provisionalTriangle = FAITriangle(
+            tp1: start, tp2: outer, tp3: cur,
+            perimeterM: perim,
+            closingDistanceM: closingDist,
+            isClosed: isClosed)
+    }
+
+    /// Rebuild the farthest-keypoint cache after a thin-buffer pass.
+    /// O(n) over keyPoints; only invoked when thinBuffer() actually
+    /// reshuffled the array, so amortised cost stays low.
+    private func recomputeFarthest() {
+        guard let start = flightStart else {
+            farthestKeyIdx = -1
+            farthestKeyDistM = 0
+            return
+        }
+        var bestIdx = -1
+        var bestD = 0.0
+        for (i, p) in keyPoints.enumerated() {
+            let d = Self.distanceM(start, p)
+            if d > bestD {
+                bestD = d
+                bestIdx = i
+            }
+        }
+        farthestKeyIdx = bestIdx
+        farthestKeyDistM = bestD
     }
 
     private func thinBuffer() {
@@ -111,7 +316,7 @@ final class FAITriangleDetector: ObservableObject {
 
     private func recompute() {
         guard keyPoints.count >= 3, let start = flightStart else {
-            DispatchQueue.main.async { self.bestTriangle = nil }
+            DispatchQueue.main.async { self.validTriangle = nil }
             return
         }
 
@@ -123,7 +328,7 @@ final class FAITriangleDetector: ObservableObject {
                                                flightStart: start,
                                                flightEnd: current)
             DispatchQueue.main.async {
-                self.bestTriangle = result
+                self.validTriangle = result
             }
         }
     }

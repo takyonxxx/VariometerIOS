@@ -1,24 +1,54 @@
 import SwiftUI
 
-/// Wind direction + speed dial.
+/// Wind direction + speed dial — HEADING-UP layout.
+///
+/// The dial is pilot-centric: the top of the ring is always the pilot's
+/// direction of travel. The whole "world layer" (ring fill, tick marks,
+/// N/E/S/W letters and the windsock) rotates by -courseDeg, so a pilot
+/// flying east sees N on the LEFT side of the ring and S on the right.
+/// The windsock then sits at windFromDeg within that world frame, which
+/// places its pole at the wind-FROM bearing *relative to the pilot's
+/// body*. Reading examples:
+///
+///   • Pole at top    → wind hitting the pilot from in front
+///   • Pole at bottom → wind from behind (tailwind)
+///   • Pole on left   → wind from the pilot's left
+///   • Pole on right  → wind from the pilot's right
+///
+/// This is what paraglider pilots actually want in flight: wind read
+/// against the body axis is faster to interpret than absolute compass
+/// cardinals like "WNW".
 ///
 /// Layout, from outer to inner:
-///   - Ring with 16 tick marks (major/minor)
-///   - N/E/S/W letters JUST INSIDE the ticks (non-rotating, always English)
-///   - Windsock on the ring edge, pointing in the direction the wind is
-///     *going* (so its pole is on the wind-FROM side, sock trails downwind).
-///     This reads more naturally than a vertical sock: if the windsock is
-///     to the NW of center with its tail trailing SE, the wind is FROM NW.
-///   - Big center readout: speed, unit, cardinal text (e.g. "25  km/h  NW")
-///
-/// The cardinal labels are English (N/E/S/W + NE/SE/SW/NW intercardinals in
-/// the center text), matching the international aviation convention used in
-/// XCTrack and similar tools.
+///   - Static cyan triangle at the very top: pilot heading marker.
+///     It does NOT rotate — it's a visual anchor reminding the pilot
+///     that the top of the dial is "where I'm going". Sits OUTSIDE
+///     the world layer so the world rotates underneath it.
+///   - World layer (rotates by -courseDeg):
+///       • Ring fill + cyan stroke
+///       • 16 tick marks
+///       • N/E/S/W letters — positions rotate with the world, but each
+///         glyph is counter-rotated (+courseDeg) so the letter shapes
+///         themselves stay visually upright at every heading.
+///       • Windsock — drawn at windFromDeg within the world frame, so
+///         its pole lands at the wind-FROM bearing relative to the
+///         pilot, with the sock streaming toward the pilot's body.
+///   - Big center readout: speed, unit, cardinal text (e.g. "25 km/h NW").
+///     Does NOT rotate. The cardinal text is the ABSOLUTE compass point
+///     of the wind source — useful when calling wind on the radio or
+///     comparing with windgrams. The dial is heading-up but the spoken
+///     name is still north-referenced.
 struct WindDial: View {
     let windFromDeg: Double
     let windSpeedKmh: Double
     let courseDeg: Double
     let confidence: Double
+
+    /// Continuously-unwrapped dial rotation in degrees. The dial rotates
+    /// by -courseDeg, but we route it through AngleUnwrap (defined in
+    /// PanelView.swift) so it never spins a full turn at the 0/360 wrap
+    /// point — same trick as the arrow cards.
+    @State private var dialRotationDeg: Double = 0
 
     var body: some View {
         GeometryReader { geo in
@@ -26,67 +56,86 @@ struct WindDial: View {
             let r = size / 2
 
             ZStack {
-                // Compass ring — deep navy with cyan stroke
-                Circle()
-                    .fill(Color(red: 0.06, green: 0.10, blue: 0.18).opacity(0.7))
-                Circle()
-                    .stroke(Color.cyan.opacity(0.35), lineWidth: 1.5)
+                // ============================================================
+                // WORLD LAYER — rotates by -courseDeg (heading-up).
+                // Everything inside here lives in the world's reference
+                // frame. The pilot is implicit: always at the top of the
+                // dial, looking up.
+                // ============================================================
+                ZStack {
+                    // Compass ring — deep navy with cyan stroke
+                    Circle()
+                        .fill(Color(red: 0.06, green: 0.10, blue: 0.18).opacity(0.7))
+                    Circle()
+                        .stroke(Color.cyan.opacity(0.35), lineWidth: 1.5)
 
-                // Tick marks — 16 around the dial (every 22.5°).
-                // Kept short and pushed to the very outer edge so they don't
-                // reach the cardinal letters. Sizes reduced from 12/8/5 to
-                // 7/5/3 and offset pushed outward.
-                ForEach(0..<16) { i in
-                    let a = Double(i) * 22.5
-                    let isMajor = (i % 4 == 0)       // N/E/S/W get major ticks
-                    let isMinor = (i % 2 == 0)       // NE/SE/SW/NW get medium
-                    let tickLen: CGFloat = isMajor ? 7 : (isMinor ? 5 : 3)
-                    let tickWidth: CGFloat = isMajor ? 2.5 : (isMinor ? 1.5 : 1)
-                    let opacity: Double = isMajor ? 0.85 : (isMinor ? 0.55 : 0.30)
-                    Rectangle()
-                        .fill(Color.cyan.opacity(opacity))
-                        .frame(width: tickWidth, height: tickLen)
-                        // Pin to the outer edge: tick's outer end is almost
-                        // touching the ring stroke, inner end well clear of
-                        // the cardinal label.
-                        .offset(y: -r + tickLen / 2 + 2)
-                        .rotationEffect(.degrees(a))
+                    // Tick marks — 16 around the dial (every 22.5°).
+                    // Kept short and pushed to the very outer edge so they
+                    // don't reach the cardinal letters.
+                    ForEach(0..<16) { i in
+                        let a = Double(i) * 22.5
+                        let isMajor = (i % 4 == 0)       // N/E/S/W get major ticks
+                        let isMinor = (i % 2 == 0)       // NE/SE/SW/NW get medium
+                        let tickLen: CGFloat = isMajor ? 7 : (isMinor ? 5 : 3)
+                        let tickWidth: CGFloat = isMajor ? 2.5 : (isMinor ? 1.5 : 1)
+                        let opacity: Double = isMajor ? 0.85 : (isMinor ? 0.55 : 0.30)
+                        Rectangle()
+                            .fill(Color.cyan.opacity(opacity))
+                            .frame(width: tickWidth, height: tickLen)
+                            // Pin to the outer edge: tick's outer end is almost
+                            // touching the ring stroke, inner end well clear of
+                            // the cardinal label.
+                            .offset(y: -r + tickLen / 2 + 2)
+                            .rotationEffect(.degrees(a))
+                    }
+
+                    // Cardinal letters N/E/S/W — positioned INSIDE the major
+                    // ticks. Each label sits at its compass position within
+                    // the world frame (so the parent's -courseDeg rotation
+                    // sweeps the position around the ring), but the glyph
+                    // itself is counter-rotated by +courseDeg so the letter
+                    // never appears upside-down or sideways.
+                    CardinalLabel(text: "N", radius: r, placement: .north,
+                                  isPrimary: true, counterRotateDeg: courseDeg)
+                    CardinalLabel(text: "E", radius: r, placement: .east,
+                                  counterRotateDeg: courseDeg)
+                    CardinalLabel(text: "S", radius: r, placement: .south,
+                                  counterRotateDeg: courseDeg)
+                    CardinalLabel(text: "W", radius: r, placement: .west,
+                                  counterRotateDeg: courseDeg)
+
+                    // Windsock — pole on the wind-FROM bearing within the
+                    // world frame. Combined with the world's -courseDeg
+                    // rotation, this puts the pole at the wind-FROM bearing
+                    // *relative to the pilot* (e.g. "wind from my left").
+                    WindsockContainer(sockHeight: r * 0.30,
+                                      sockWidth: r * 0.55,
+                                      ringRadius: r,
+                                      confidence: confidence)
+                        .frame(width: size, height: size)
+                        .rotationEffect(.degrees(windFromDeg))
                 }
+                .rotationEffect(.degrees(dialRotationDeg))
+                .animation(.easeOut(duration: 0.25), value: dialRotationDeg)
 
-                // Cardinal letters N/E/S/W — positioned INSIDE the major ticks,
-                // with enough inset that they never touch the tick rectangles.
-                // Each label is placed using an offset within a rotated frame,
-                // but the TEXT itself does NOT rotate (so N/E/S/W stay upright).
-                CardinalLabel(text: "N", radius: r, placement: .north, isPrimary: true)
-                CardinalLabel(text: "E", radius: r, placement: .east)
-                CardinalLabel(text: "S", radius: r, placement: .south)
-                CardinalLabel(text: "W", radius: r, placement: .west)
+                // ============================================================
+                // STATIC OVERLAY — does NOT rotate.
+                // The cyan pilot-direction triangle and the center readout
+                // sit on top of the world layer.
+                // ============================================================
 
-                // Course / heading triangle (pilot direction, points up)
+                // Pilot heading marker — small cyan triangle at the very top
+                // of the ring, pointing up. Never rotates: top of card is
+                // always "ahead". Visual anchor.
                 Triangle()
                     .fill(Color.cyan.opacity(0.8))
                     .frame(width: 10, height: 14)
                     .offset(y: -r + 2)
 
-                // Windsock — horizontal layout, pole on the ring's outer edge.
-                //
-                // Trick: we size the container to span the FULL diameter of
-                // the ring, and draw the sock at the TOP of that container.
-                // The container's geometric center coincides with the ring's
-                // center, so `rotationEffect(.degrees(windFromDeg))` rotates
-                // the entire container (and the sock within it) around the
-                // ring center. The pole stays exactly on the ring edge for
-                // every wind direction.
-                WindsockContainer(sockHeight: r * 0.30,
-                                  sockWidth: r * 0.55,
-                                  ringRadius: r,
-                                  confidence: confidence)
-                    .frame(width: size, height: size)
-                    .rotationEffect(.degrees(windFromDeg))
-
                 // Center readouts: wind speed + unit + cardinal text.
-                // Cardinal is an English compass direction, shown next to the
-                // number so the pilot gets all wind info in one glance.
+                // Cardinal is the ABSOLUTE English compass direction of
+                // the wind source (e.g. "NW" = wind from the north-west),
+                // unaffected by the pilot's heading.
                 VStack(spacing: 0) {
                     Text(String(format: "%.0f", windSpeedKmh))
                         .font(.system(size: r * 0.58, weight: .black, design: .rounded))
@@ -106,6 +155,14 @@ struct WindDial: View {
             }
             .frame(width: size, height: size)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .onAppear {
+                // Initialise so the first frame doesn't animate from 0.
+                dialRotationDeg = -courseDeg
+            }
+            .onChange(of: courseDeg) { newCourse in
+                dialRotationDeg = AngleUnwrap.next(
+                    current: dialRotationDeg, target: -newCourse)
+            }
         }
     }
 
@@ -162,6 +219,11 @@ private struct CardinalLabel: View {
     let radius: CGFloat
     let placement: Placement
     var isPrimary: Bool = false
+    /// How many degrees to counter-rotate the glyph by. The parent dial
+    /// rotates the whole world by -courseDeg; passing +courseDeg here
+    /// makes the letter shape stay upright at every heading. Pass 0 (or
+    /// omit) for a non-rotating dial.
+    var counterRotateDeg: Double = 0
 
     enum Placement { case north, east, south, west }
 
@@ -183,6 +245,7 @@ private struct CardinalLabel: View {
             .foregroundColor(isPrimary
                              ? Color(red: 0.45, green: 0.85, blue: 1.0)
                              : .white.opacity(0.82))
+            .rotationEffect(.degrees(counterRotateDeg))
             .offset(x: offset.dx, y: offset.dy)
     }
 }

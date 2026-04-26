@@ -647,9 +647,20 @@ struct PanelView: View {
                                  heading: locationMgr.bestHeadingDeg,
                                  thermals: vario.thermals,
                                  // Task loaded → pilot is flying waypoints,
-                                 // not a free triangle. Hide FAI overlay
+                                 // not a free triangle. Hide FAI overlays
                                  // so the map isn't cluttered.
-                                 triangle: task.turnpoints.isEmpty ? fai.bestTriangle : nil,
+                                 triangle: task.turnpoints.isEmpty ? fai.validTriangle : nil,
+                                 // Provisional ("currently flying") triangle
+                                 // is drawn in cyan so it never gets confused
+                                 // with the amber/green validated triangle
+                                 // even when both are on the map at once.
+                                 // Pilot can see both: the validated FAI
+                                 // shape (amber dashed, growing as more
+                                 // FAI-valid geometry is found) and the
+                                 // live "what I'm flying right now" cyan
+                                 // outline tracking their current position.
+                                 provisionalTriangle: task.turnpoints.isEmpty
+                                                        ? fai.provisionalTriangle : nil,
                                  flightStart: task.turnpoints.isEmpty ? fai.flightStart : nil,
                                  task: task.turnpoints.isEmpty ? nil : task,
                                  fitTriangleToken: fitTriangleToken,
@@ -663,6 +674,75 @@ struct PanelView: View {
                     // existing view instead.
                     .id("map-widget")
                     .allowsHitTesting(!editMode)
+
+                // FAI distance pill — bottom-left corner. Shows two
+                // numbers stacked:
+                //   • Big: triangle PERIMETER (the geometric size of the
+                //     shape on the map). Reads from the validated FAI
+                //     triangle when one exists, otherwise from the
+                //     provisional "currently flying" triangle.
+                //   • Small below: pilot's actual flown PATH length so
+                //     far. Always growing while the flight continues.
+                //     Useful to compare with perimeter — they match
+                //     once the pilot has fully flown the triangle.
+                //
+                // Color/label tracks state:
+                //   • Validated AND closed (FAI score locked in): green.
+                //     Label "FAI ÜÇGENİ".
+                //   • Validated but still open (FAI shape achieved, not
+                //     closed yet): amber. Label "FAI ÜÇGENİ".
+                //   • Only provisional (no FAI-valid shape yet): yellow.
+                //     Label "TAHMİNİ".
+                // Only shown when no task is loaded — same gating as
+                // the FAI overlay itself, to avoid cluttering the map
+                // during a competition task.
+                if task.turnpoints.isEmpty,
+                   let displayTri = fai.validTriangle ?? fai.provisionalTriangle {
+                    let perimKm = displayTri.perimeterM / 1000.0
+                    let pathKm = fai.pathLengthM / 1000.0
+                    let isValidated = fai.validTriangle != nil
+                    let isClosed = isValidated && (fai.validTriangle?.isClosed ?? false)
+                    let pillColor: Color = isClosed
+                        ? Color(red: 0.35, green: 0.95, blue: 0.55)        // green
+                        : Color(red: 1.0,  green: 0.80, blue: 0.30)        // amber/yellow
+                    let label = isValidated
+                        ? L10n.string("fai_triangle_label")
+                        : L10n.string("fai_estimate_label")
+                    HStack(spacing: 6) {
+                        Image(systemName: isClosed
+                              ? "triangle.fill" : "triangle")
+                            .font(.system(size: 12, weight: .bold))
+                        VStack(alignment: .leading, spacing: 0) {
+                            Text(label)
+                                .font(.system(size: 9, weight: .bold, design: .rounded))
+                                .foregroundColor(.white.opacity(0.7))
+                            Text(String(format: "%.1f km", perimKm))
+                                .font(.system(size: 14, weight: .heavy, design: .rounded))
+                                .foregroundColor(.white)
+                                .monospacedDigit()
+                            // Flown-path subline. Smaller, dimmer — secondary info.
+                            HStack(spacing: 3) {
+                                Image(systemName: "figure.fall")
+                                    .font(.system(size: 8, weight: .bold))
+                                Text(String(format: "%.1f km", pathKm))
+                                    .font(.system(size: 10, weight: .semibold, design: .rounded))
+                                    .monospacedDigit()
+                            }
+                            .foregroundColor(.white.opacity(0.6))
+                        }
+                    }
+                    .foregroundColor(pillColor)
+                    .padding(.horizontal, 8).padding(.vertical, 5)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(Color.black.opacity(0.7))
+                            .overlay(RoundedRectangle(cornerRadius: 8)
+                                .stroke(pillColor.opacity(0.6), lineWidth: 1.2))
+                    )
+                    .padding(8)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+                    .allowsHitTesting(false)
+                }
 
                 // Recenter floating button — appears when the pilot has
                 // panned the map away from their position (autoFollow

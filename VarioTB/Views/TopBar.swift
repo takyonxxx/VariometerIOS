@@ -71,10 +71,20 @@ struct TopBar: View {
         switch item {
 
         case .simulator:
-            // Simulator is task-only now: without a task there's nothing
-            // to simulate. The button shows a disabled/dim state when no
-            // task is loaded so the user understands why it's inert.
+            // Two-mode simulator:
+            //   - Task loaded   → fly the user's competition task.
+            //   - No task       → fly an FAI-triangle PRACTICE flight
+            //     centred on the pilot's current GPS location, so the
+            //     pilot can exercise the FAI detector and HUD without
+            //     having to build a task.
+            //
+            // The button is only disabled when (a) we have no task and
+            // (b) we don't yet have a GPS fix to anchor the practice
+            // triangle to. With a fix we're always good to go, with or
+            // without a task.
             let hasTask = !task.turnpoints.isEmpty
+            let canRunPractice = locationMgr.hasFix && locationMgr.coordinate != nil
+            let canStart = hasTask || canRunPractice
             Button {
                 if simulator.isRunning {
                     simulator.stop()
@@ -117,6 +127,14 @@ struct TopBar: View {
                         for: task.turnpoints)
                     simulator.loadTask(waypoints, routePoints: routePoints)
                     simulator.start()
+                } else if let pilotCoord = locationMgr.coordinate {
+                    // No task → spawn an FAI practice triangle anchored
+                    // at the pilot's current location. The simulator
+                    // builds the four-waypoint route internally.
+                    simulator.loadFAITrianglePractice(
+                        from: pilotCoord,
+                        pilotAltM: locationMgr.fusedAltitude)
+                    simulator.start()
                 }
             } label: {
                 HStack(spacing: 4) {
@@ -129,7 +147,7 @@ struct TopBar: View {
                 }
                 .foregroundColor(simulator.isRunning
                                  ? .orange
-                                 : (hasTask ? .white.opacity(0.7) : .white.opacity(0.25)))
+                                 : (canStart ? .white.opacity(0.7) : .white.opacity(0.25)))
                 .padding(.horizontal, 8).padding(.vertical, 4)
                 .background(
                     Capsule()
@@ -139,7 +157,7 @@ struct TopBar: View {
                             lineWidth: 1.5))
                 )
             }
-            .disabled(!hasTask && !simulator.isRunning)
+            .disabled(!canStart && !simulator.isRunning)
 
         case .waypoints:
             Button { showWaypoints = true } label: {

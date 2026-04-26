@@ -197,15 +197,29 @@ struct ContentView: View {
             deepLinkTaskPayload = payload
             showTaskEditor = true
         }
-        .onChange(of: recorder.isRecording) { recording in
-            // FAI triangle detector follows the recorder lifecycle
-            if recording { fai.start() } else { fai.stop() }
+        .onChange(of: recorder.isRecording) { _ in
+            // FAI triangle detector follows BOTH the recorder and the
+            // simulator: whichever is active drives a "flight" worth
+            // tracking. updateFAILifecycle() handles overlap so the
+            // detector isn't reset mid-flight if both transition.
+            updateFAILifecycle()
+        }
+        .onChange(of: simulator.isRunning) { _ in
+            // Sim mode also activates the FAI detector so the practice
+            // triangle (and any other simulated flight) gets the same
+            // live HUD / map overlay treatment as a real recorded
+            // flight. No IGC file is written for sim runs — only the
+            // in-memory detector state.
+            updateFAILifecycle()
         }
         .onChange(of: recorder.currentIGCURL) { _ in
             // Every new IGC file = new flight → reset the FAI detector so
             // stale flightStart/triangle from the previous flight doesn't
-            // leak into the new one (e.g. real→sim switch, or sim restart).
-            if recorder.isRecording {
+            // leak into the new one. BUT: if the simulator is also
+            // running, the practice triangle is the "current flight"
+            // and we shouldn't wipe its detector state out from under
+            // it. Only reset on a fresh IGC when sim is idle.
+            if recorder.isRecording && !simulator.isRunning {
                 fai.start()
             }
         }
@@ -305,6 +319,27 @@ struct ContentView: View {
                              sinkThreshold: settings.sinkThreshold,
                              basePitchHz: settings.basePitchHz,
                              maxPitchHz: settings.maxPitchHz)
+    }
+
+    /// Drive the FAI triangle detector's lifecycle from the OR of the
+    /// recorder and simulator states. The detector should be running
+    /// whenever there's a "flight" worth analysing — either a real one
+    /// being recorded to IGC, or a simulated one running in memory.
+    /// Calling fai.start() resets the detector's buffers (flightStart,
+    /// keyPoints, validTriangle, provisionalTriangle, pathLengthM),
+    /// so we only call it on the rising edge
+    /// of the combined state — i.e. when neither was active a moment
+    /// ago and now one of them is. fai.stop() is fine to call on the
+    /// falling edge unconditionally; it just halts the recompute timer
+    /// and leaves any computed triangle visible.
+    private func updateFAILifecycle() {
+        let shouldRun = recorder.isRecording || simulator.isRunning
+        let isRunning = fai.isActive
+        if shouldRun && !isRunning {
+            fai.start()
+        } else if !shouldRun && isRunning {
+            fai.stop()
+        }
     }
 
     private func startTick() {

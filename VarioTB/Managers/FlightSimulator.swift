@@ -287,11 +287,119 @@ final class FlightSimulator: ObservableObject {
         }
     }
 
+    /// Set up an FAI-triangle PRACTICE flight starting from the pilot's
+    /// current GPS position. Used when the user taps "SIM" without a
+    /// competition task loaded — gives them a way to exercise the FAI
+    /// triangle detector and the live triangle HUD without driving to
+    /// a real launch site or building a task by hand.
+    ///
+    /// Geometry — bearings 225° / 0° per the user's spec. Leg lengths
+    /// chosen so that:
+    ///   1. Total perimeter is ≥ 30 km (long enough to be a meaningful
+    ///      triangle for the detector and HUD), and
+    ///   2. The triangle clears the FAI 0.28 min-leg / perimeter ratio
+    ///      with a comfortable margin (sits at ~0.291).
+    ///
+    ///   • TP1 = takeoff + 12.50 km on bearing 225° (southwest)
+    ///   • TP2 = TP1     +  8.75 km on bearing   0° (north)
+    ///   • TP3 = takeoff itself (closing leg)
+    ///
+    /// Resulting legs (geometry is scale-free; ratio holds at any size):
+    ///   • Leg 1 (takeoff → TP1): 12.50 km
+    ///   • Leg 2 (TP1 → TP2):      8.75 km
+    ///   • Leg 3 (TP2 → takeoff): ~8.84 km   (computed from geometry)
+    ///   • Perimeter:            ~30.09 km   (≥ 30 ✓)
+    ///
+    /// Min-leg / perimeter = 8.75 / 30.09 ≈ 0.291, comfortably above
+    /// the FAI 0.28 threshold — the detector should flag this as a
+    /// valid triangle.
+    ///
+    /// Note on geometry: triangle SHAPE drives the FAI ratio, not its
+    /// size. A naive 10/10/~7.65 km setup sits at 0.277 — just under
+    /// the threshold — and scaling all three legs up uniformly would
+    /// not have helped. Making legs 1 and 2 unequal (here 12.5 vs
+    /// 8.75 km) reshapes the triangle past the 0.28 ratio, then the
+    /// whole shape is sized so the perimeter clears 30 km.
+    ///
+    /// Each turnpoint gets a 200 m radius cylinder, which is wide enough
+    /// for the simulated cruise speed (~30 km/h) to register a clean
+    /// "reach" without the sim having to fly impossibly precise lines.
+    /// The pilot's starting altitude is taken from the LocationManager;
+    /// if no altitude is available yet (no GPS fix on this device), we
+    /// fall back to a sensible default of 1000 m so the sim can still
+    /// glide down toward the triangle.
+    func loadFAITrianglePractice(from pilotCoord: CLLocationCoordinate2D,
+                                  pilotAltM: Double) {
+        let leg1Km: Double = 12.50
+        let leg2Km: Double = 8.75
+        let tp1 = Self.destination(from: pilotCoord,
+                                    bearingDeg: 225,
+                                    distanceKm: leg1Km)
+        // TP2 is positioned NORTH of TP1, not north of takeoff —
+        // leg lengths are between successive turnpoints.
+        let tp2 = Self.destination(from: tp1,
+                                    bearingDeg: 0,
+                                    distanceKm: leg2Km)
+        // Spawn altitude — sit comfortably above the pilot's current
+        // ground level so the sim's natural sink during legs has room
+        // to play out before triggering the low-altitude thermal guard.
+        let baseAlt = pilotAltM > 0 ? pilotAltM : 1000.0
+
+        // Build the four-waypoint task: takeoff → TP1 → TP2 → back to
+        // takeoff. The first and last waypoints share the same coord
+        // (the closing leg ends right where it started).
+        let radiusM: Double = 200
+        let waypoints: [TaskWaypoint] = [
+            TaskWaypoint(coord: pilotCoord, radiusM: radiusM,
+                         altM: baseAlt, climbAtTP: false, kind: .takeoff),
+            TaskWaypoint(coord: tp1, radiusM: radiusM,
+                         altM: baseAlt, climbAtTP: true, kind: .turn),
+            TaskWaypoint(coord: tp2, radiusM: radiusM,
+                         altM: baseAlt, climbAtTP: true, kind: .turn),
+            TaskWaypoint(coord: pilotCoord, radiusM: radiusM,
+                         altM: baseAlt, climbAtTP: false, kind: .goal),
+        ]
+        // Route points = same sequence of coords. The sim flies each
+        // segment as a straight line. simPathIdx skips the spawn point
+        // (index 0) so the first leg starts immediately.
+        let routePoints: [CLLocationCoordinate2D] = [
+            pilotCoord, tp1, tp2, pilotCoord
+        ]
+        loadTask(waypoints, routePoints: routePoints)
+    }
+
+    /// Spherical-Earth great-circle destination calculator. Given a
+    /// starting coordinate, an initial bearing (degrees, 0 = N,
+    /// clockwise) and a distance in kilometers, returns the destination
+    /// coordinate. Accuracy is plenty for sim-scale distances (<100 km).
+    private static func destination(from origin: CLLocationCoordinate2D,
+                                      bearingDeg: Double,
+                                      distanceKm: Double) -> CLLocationCoordinate2D {
+        let R = 6371.0   // Earth radius in km
+        let δ = distanceKm / R
+        let θ = bearingDeg * .pi / 180
+        let φ1 = origin.latitude * .pi / 180
+        let λ1 = origin.longitude * .pi / 180
+
+        let sinφ2 = sin(φ1) * cos(δ) + cos(φ1) * sin(δ) * cos(θ)
+        let φ2 = asin(sinφ2)
+        let y = sin(θ) * sin(δ) * cos(φ1)
+        let x = cos(δ) - sin(φ1) * sinφ2
+        let λ2 = λ1 + atan2(y, x)
+
+        return CLLocationCoordinate2D(
+            latitude: φ2 * 180 / .pi,
+            longitude: λ2 * 180 / .pi)
+    }
+
     func start() {
         guard !isRunning else { return }
-        // Task-only simulator: if no task waypoints are loaded there's
-        // nothing meaningful to simulate. Silently no-op rather than
-        // spawning the old scripted Kumludoruk triangle.
+        // Sim needs at least one waypoint loaded to know where to fly.
+        // The caller is expected to have called either loadTask(...) (a
+        // real competition task) or loadFAITrianglePractice(...) (an
+        // ad-hoc practice triangle from the pilot's current location)
+        // before reaching here. Without waypoints we have nothing
+        // physically meaningful to simulate, so silently no-op.
         guard !taskWaypoints.isEmpty else { return }
 
         setupScenario()
