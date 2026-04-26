@@ -87,8 +87,18 @@ struct CompetitionTaskView: View {
                         }
                     } else {
                         Button {
-                            var cal = Calendar(identifier: .gregorian)
-                            cal.timeZone = TimeZone(identifier: "UTC")!
+                            // Default to LOCAL 13:00, not UTC 13:00. The
+                            // DatePicker below renders dates in the device's
+                            // local time zone, so writing UTC 13:00 here
+                            // shows up as e.g. "16:00" in Turkey (UTC+3) —
+                            // confusing for a pilot who tapped "Set start
+                            // time" expecting "13:00". The underlying Date
+                            // is still absolute (UTC under the hood); the
+                            // comparison against Date() at the start gate
+                            // works either way. We use the local calendar
+                            // here so the pilot's first reading matches
+                            // what they'd intuitively type.
+                            let cal = Calendar(identifier: .gregorian)
                             task.taskStartTime = cal.date(bySettingHour: 13, minute: 0, second: 0, of: Date())
                         } label: {
                             Label(L10n.string("set_task_start"),
@@ -113,8 +123,9 @@ struct CompetitionTaskView: View {
                         }
                     } else {
                         Button {
-                            var cal = Calendar(identifier: .gregorian)
-                            cal.timeZone = TimeZone(identifier: "UTC")!
+                            // Local 16:00 default — same rationale as the
+                            // start time button above.
+                            let cal = Calendar(identifier: .gregorian)
                             task.taskDeadline = cal.date(bySettingHour: 16, minute: 0, second: 0, of: Date())
                         } label: {
                             Label(L10n.string("set_task_deadline"),
